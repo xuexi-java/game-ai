@@ -50,7 +50,7 @@ UI: 玩家看到一个极简表单（View_IdentityCheck）[cite: ""]。
 
 玩家输入: 
 - **游戏选择**: 通过下拉框选择游戏（下拉框选项来源于系统设置中已配置的游戏列表，仅显示"已启用"状态的游戏）[cite: 4.4, 本文档]
-- **区服选择**: 通过下拉框选择区服（区服选项来源于系统设置中该游戏配置的区服列表）[cite: 4.4, 本文档]
+- **区服选择**: 通过玩家自己输入
 - **输入角色ID或昵称**（必填）[cite: ""]
 
 后端动作: 后端（Nest.js）[cite: 5.1, installation_guide.md] 立即查询 Ticket [cite: v2_schema.prisma] 表，检查该玩家（playerIdOrName + gameId + serverId）[cite: ""] 是否有**"未关闭"**的工单。

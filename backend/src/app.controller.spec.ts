@@ -15,8 +15,8 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('应该返回正确的欢迎消息', () => {
+      expect(appController.getHello()).toBe('AI客服系统后端API - 运行正常');
     });
   });
 });

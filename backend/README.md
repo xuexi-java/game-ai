@@ -44,18 +44,114 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-## Run tests
+## 测试指南
+
+### 测试前准备
+
+1. **确保依赖已安装**
+```bash
+cd backend
+npm install
+```
+
+2. **确保数据库服务运行**（E2E测试需要）
+```bash
+# 在项目根目录运行
+docker-compose up -d
+```
+
+### 运行测试
+
+#### 1. 运行所有单元测试
+```bash
+cd backend
+npm test
+```
+
+#### 2. 运行测试并查看覆盖率报告
+```bash
+npm run test:cov
+```
+覆盖率报告会生成在 `coverage/` 目录下，可以用浏览器打开 `coverage/lcov-report/index.html` 查看详细报告。
+
+#### 3. 监听模式运行测试（推荐开发时使用）
+```bash
+npm run test:watch
+```
+文件保存后会自动重新运行相关测试。
+
+#### 4. 运行E2E测试
+```bash
+npm run test:e2e
+```
+
+#### 5. 调试模式运行测试
+```bash
+npm run test:debug
+```
+
+### 运行特定测试文件
 
 ```bash
-# unit tests
-$ npm run test
+# 运行单个测试文件
+npm test -- auth.service.spec.ts
 
-# e2e tests
-$ npm run test:e2e
+# 运行匹配模式的测试文件
+npm test -- --testNamePattern="AuthService"
 
-# test coverage
-$ npm run test:cov
+# 运行特定模块的测试
+npm test -- auth
 ```
+
+### 测试文件说明
+
+已创建的测试文件：
+
+- ✅ `auth.service.spec.ts` - 认证服务测试（登录、Token验证）
+- ✅ `game.service.spec.ts` - 游戏管理服务测试（CRUD操作）
+- ✅ `ticket.service.spec.ts` - 工单服务测试（创建、查询、更新）
+- ✅ `message.service.spec.ts` - 消息服务测试（创建消息、查询消息）
+- ✅ `session.service.spec.ts` - 会话服务测试（创建会话、AI分流、转人工）
+- ✅ `urgency-rule.service.spec.ts` - 紧急规则服务测试（规则管理、队列排序）
+- ✅ `dify.service.spec.ts` - Dify AI服务测试（AI分流、回复优化）
+- ✅ `satisfaction.service.spec.ts` - 满意度评价服务测试（评价创建、统计）
+
+### 测试覆盖率目标
+
+- **语句覆盖率（Statements）**: > 80%
+- **分支覆盖率（Branches）**: > 75%
+- **函数覆盖率（Functions）**: > 80%
+- **行覆盖率（Lines）**: > 80%
+
+### 常见问题
+
+#### 1. 测试失败：找不到模块
+```bash
+# 重新安装依赖
+npm install
+```
+
+#### 2. 测试超时
+检查测试中的异步操作是否正确处理，确保所有 Promise 都被 await。
+
+#### 3. Mock 不生效
+确保在 `beforeEach` 中正确设置 mock，并在 `afterEach` 中清理。
+
+#### 4. 数据库连接错误（E2E测试）
+确保 Docker 容器正在运行：
+```bash
+docker-compose ps
+docker-compose up -d
+```
+
+### 测试最佳实践
+
+1. **每个测试应该独立**：不依赖其他测试的执行顺序
+2. **使用描述性的测试名称**：清楚说明测试的内容
+3. **测试边界情况**：包括正常情况、异常情况和边界值
+4. **保持测试简洁**：每个测试只验证一个功能点
+5. **使用 Mock**：隔离外部依赖，提高测试速度
+6. **定期运行测试**：在提交代码前运行测试确保没有破坏现有功能
 
 ## Deployment
 
