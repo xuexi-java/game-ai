@@ -84,7 +84,10 @@ export class GameController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch('servers/:id')
-  updateServer(@Param('id') id: string, @Body() updateServerDto: UpdateServerDto) {
+  updateServer(
+    @Param('id') id: string,
+    @Body() updateServerDto: UpdateServerDto,
+  ) {
     return this.gameService.updateServer(id, updateServerDto);
   }
 

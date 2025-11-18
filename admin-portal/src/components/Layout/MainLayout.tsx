@@ -1,40 +1,44 @@
 import { useState } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Badge, Typography, Space } from 'antd';
+import {
+  Layout,
+  Menu,
+  Avatar,
+  Dropdown,
+  Button,
+} from 'antd';
 import {
   DashboardOutlined,
   CustomerServiceOutlined,
   FileTextOutlined,
+  MessageOutlined,
   AppstoreOutlined,
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
-  BellOutlined,
-  WifiOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { useSessionStore } from '../../stores/sessionStore';
 import { websocketService } from '../../services/websocket.service';
+import { resolveAvatarUrl } from '../../utils/avatar';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
-const { Text } = Typography;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
-  const { queuedSessions } = useSessionStore();
+  const isAdmin = user?.role === 'ADMIN';
 
-  // 菜单项配置
-  const menuItems = [
+  const rawMenuItems = [
     {
       key: '/dashboard',
       icon: <DashboardOutlined />,
       label: '仪表盘',
+      visible: isAdmin,
     },
     {
       key: '/workbench',
@@ -55,6 +59,11 @@ const MainLayout: React.FC = () => {
       key: '/tickets',
       icon: <FileTextOutlined />,
       label: '工单管理',
+    },
+    {
+      key: '/sessions',
+      icon: <MessageOutlined />,
+      label: '会话管理',
     },
     {
       key: '/games',
@@ -78,36 +87,28 @@ const MainLayout: React.FC = () => {
         },
       ],
     },
-  ].filter(item => item.visible !== false);
-
-  // 用户下拉菜单
-  const userMenuItems = [
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: '个人资料',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: () => {
-        websocketService.disconnect();
-        logout();
-        navigate('/login');
-      },
-    },
   ];
 
-  // 处理菜单点击
+  const menuItems = rawMenuItems
+    .filter((item) => item.visible !== false)
+    .map(({ visible, ...item }) => item);
+
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key);
   };
 
-  // 获取当前选中的菜单项
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
+
+  const handleLogout = () => {
+    websocketService.disconnect();
+    logout();
+    navigate('/login');
+  };
+
   const getSelectedKeys = () => {
     const path = location.pathname;
-    // 找到匹配的菜单项
     for (const item of menuItems) {
       if (item.children) {
         for (const child of item.children) {
@@ -122,11 +123,9 @@ const MainLayout: React.FC = () => {
     return ['/dashboard'];
   };
 
-  // 获取展开的菜单项
   const getOpenKeys = () => {
     const path = location.pathname;
     const openKeys: string[] = [];
-    
     for (const item of menuItems) {
       if (item.children) {
         for (const child of item.children) {
@@ -146,14 +145,14 @@ const MainLayout: React.FC = () => {
         trigger={null}
         collapsible
         collapsed={collapsed}
-        width={240}
+        width={200}
         className="layout-sider"
       >
         <div className="logo">
           <AppstoreOutlined />
           {!collapsed && <span>AI客服管理</span>}
         </div>
-        
+
         <Menu
           theme="dark"
           mode="inline"
@@ -163,52 +162,56 @@ const MainLayout: React.FC = () => {
           onClick={handleMenuClick}
         />
       </Sider>
-      
+
       <Layout className="site-layout">
         <Header className="layout-header">
           <div className="header-left">
-            <button
+            <Button
               className="trigger"
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
-            >
-              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </button>
+            />
           </div>
-          
+
           <div className="header-right">
-            <Space size="middle">
-              {/* WebSocket连接状态 */}
-              <div className="connection-status">
-                <WifiOutlined 
-                  style={{ 
-                    color: websocketService.isConnected() ? '#52c41a' : '#ff4d4f' 
-                  }} 
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'profile',
+                    icon: <UserOutlined />,
+                    label: '个人资料',
+                    onClick: handleProfileClick,
+                  },
+                  {
+                    key: 'logout',
+                    icon: <LogoutOutlined />,
+                    label: '退出登录',
+                    onClick: handleLogout,
+                  },
+                ],
+              }}
+              placement="bottomRight"
+              arrow
+            >
+              <div className="header-user-info">
+                <Avatar 
+                  size={32} 
+                  icon={<UserOutlined />} 
+                  src={resolveAvatarUrl(user?.avatar)} 
                 />
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  {websocketService.isConnected() ? '已连接' : '未连接'}
-                </Text>
-              </div>
-              
-              {/* 通知铃铛 */}
-              <Badge count={queuedSessions.length} size="small">
-                <BellOutlined style={{ fontSize: '16px' }} />
-              </Badge>
-              
-              {/* 用户信息 */}
-              <Dropdown
-                menu={{ items: userMenuItems }}
-                placement="bottomRight"
-                arrow
-              >
-                <div className="user-info">
-                  <Avatar size="small" icon={<UserOutlined />} />
-                  <span className="username">{user?.username}</span>
+                <div className="header-user-details">
+                  <span className="header-username">{user?.username}</span>
+                  <span className="header-user-role">
+                    {user?.role === 'ADMIN' ? '管理员' : '客服'}
+                  </span>
                 </div>
-              </Dropdown>
-            </Space>
+              </div>
+            </Dropdown>
           </div>
         </Header>
-        
+
         <Content className="layout-content">
           <Outlet />
         </Content>

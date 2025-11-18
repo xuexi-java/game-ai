@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsDateString,
+  IsArray,
+} from 'class-validator';
 
 export class CreateTicketDto {
   @IsString()
@@ -28,10 +34,16 @@ export class CreateTicketDto {
   @IsString()
   @IsOptional()
   paymentOrderNo?: string;
+
+  // 新增：问题类型 IDs
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  issueTypeIds: string[];
 }
 
 export class TicketResponseDto {
-  ticketId: string;
+  id: string;
   ticketNo: string;
   token: string;
 }

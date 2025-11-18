@@ -7,4 +7,3 @@ export class AuthResponseDto {
     realName?: string;
   };
 }
-

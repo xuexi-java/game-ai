@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { SatisfactionService } from './satisfaction.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -40,4 +48,3 @@ export class SatisfactionController {
     );
   }
 }
-

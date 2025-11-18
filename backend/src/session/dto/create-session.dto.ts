@@ -11,4 +11,3 @@ export class TransferToAgentDto {
   @IsNotEmpty()
   urgency: 'URGENT' | 'NON_URGENT';
 }
-

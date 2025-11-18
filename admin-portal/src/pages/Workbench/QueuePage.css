@@ -92,16 +92,20 @@
 }
 
 
-/* 优先级徽章样式 */
-
-.ant-badge {
-    background: #1890ff;
+/* 队列序号样式 */
+.queue-item-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
     color: #fff;
     font-weight: 600;
-    min-width: 24px;
-    height: 24px;
-    line-height: 24px;
-    border-radius: 12px;
+    font-size: 13px;
+    border-radius: 50%;
+    margin-right: 12px;
+    box-shadow: 0 2px 6px rgba(24, 144, 255, 0.3);
 }
 
 

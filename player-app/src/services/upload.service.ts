@@ -13,17 +13,23 @@ export interface UploadResponse {
 /**
  * 上传工单附件
  */
+export interface UploadTicketAttachmentPayload {
+  ticketId?: string;
+  ticketToken?: string;
+}
+
 export const uploadTicketAttachment = async (
   file: File,
-  ticketId: string
+  payload: UploadTicketAttachmentPayload,
 ): Promise<UploadResponse> => {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('ticketId', ticketId);
+  if (payload.ticketId) {
+    formData.append('ticketId', payload.ticketId);
+  }
+  if (payload.ticketToken) {
+    formData.append('ticketToken', payload.ticketToken);
+  }
 
-  return apiClient.post('/upload/ticket-attachment', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  return apiClient.post('/upload/ticket-attachment', formData);
 };

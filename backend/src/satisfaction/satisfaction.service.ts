@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 
@@ -62,7 +66,7 @@ export class SatisfactionService {
   // 获取客服的评价统计
   async getAgentStats(agentId: string, startDate?: Date, endDate?: Date) {
     const where: any = { agentId };
-    
+
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = startDate;
@@ -85,10 +89,13 @@ export class SatisfactionService {
     const sum = ratings.reduce((acc, r) => acc + r.rating, 0);
     const average = sum / total;
 
-    const distribution = ratings.reduce((acc, r) => {
-      acc[r.rating] = (acc[r.rating] || 0) + 1;
-      return acc;
-    }, {} as Record<number, number>);
+    const distribution = ratings.reduce(
+      (acc, r) => {
+        acc[r.rating] = (acc[r.rating] || 0) + 1;
+        return acc;
+      },
+      {} as Record<number, number>,
+    );
 
     return {
       total,
@@ -103,4 +110,3 @@ export class SatisfactionService {
     };
   }
 }
-

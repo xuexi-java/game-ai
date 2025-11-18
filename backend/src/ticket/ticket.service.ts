@@ -1,29 +1,38 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto, TicketResponseDto } from './dto/create-ticket.dto';
+import { TicketPriorityService } from './ticket-priority.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class TicketService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private priorityService: TicketPriorityService,
+  ) {}
 
   // 生成工单编号
   private generateTicketNo(): string {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const random = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0');
     return `T-${dateStr}-${random}`;
   }
 
   // 生成访问令牌
   private generateToken(): string {
-    return crypto.randomBytes(32).toString('hex') + '-' + Date.now().toString(36);
+    return (
+      crypto.randomBytes(32).toString('hex') + '-' + Date.now().toString(36)
+    );
   }
 
   // 检查玩家是否有未关闭的工单
   async checkOpenTicket(
     gameId: string,
     serverId: string | null,
+    serverName: string | null,
     playerIdOrName: string,
   ) {
     const where: any = {
@@ -37,6 +46,8 @@ export class TicketService {
 
     if (serverId) {
       where.serverId = serverId;
+    } else if (serverName) {
+      where.serverName = serverName;
     }
 
     const openTicket = await this.prisma.ticket.findFirst({
@@ -46,8 +57,59 @@ export class TicketService {
 
     return {
       hasOpenTicket: !!openTicket,
-      ticketNo: openTicket?.ticketNo,
-      ticketId: openTicket?.id,
+      ticket: openTicket
+        ? {
+            id: openTicket.id,
+            ticketNo: openTicket.ticketNo,
+            token: openTicket.token,
+          }
+        : null,
+    };
+  }
+
+  // 检查玩家是否有相同问题类型的未完成工单
+  async checkOpenTicketByIssueType(
+    gameId: string,
+    serverIdOrName: string | null,
+    playerIdOrName: string,
+    issueTypeId: string,
+  ) {
+    const where: any = {
+      gameId,
+      playerIdOrName,
+      deletedAt: null,
+      status: {
+        not: 'CLOSED',
+      },
+      ticketIssueTypes: {
+        some: {
+          issueTypeId,
+        },
+      },
+    };
+
+    // 支持 serverId 或 serverName 匹配
+    if (serverIdOrName) {
+      where.OR = [
+        { serverId: serverIdOrName },
+        { serverName: serverIdOrName },
+      ];
+    }
+
+    const openTicket = await this.prisma.ticket.findFirst({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      hasOpenTicket: !!openTicket,
+      ticket: openTicket
+        ? {
+            id: openTicket.id,
+            ticketNo: openTicket.ticketNo,
+            token: openTicket.token,
+          }
+        : null,
     };
   }
 
@@ -55,17 +117,61 @@ export class TicketService {
   async create(createTicketDto: CreateTicketDto): Promise<TicketResponseDto> {
     const ticketNo = this.generateTicketNo();
     const token = this.generateToken();
+    const {
+      occurredAt,
+      serverId: rawServerId,
+      serverName: rawServerName,
+      issueTypeIds,
+      ...otherData
+    } = createTicketDto;
+    let serverId = rawServerId ?? null;
+    let serverName = rawServerName ?? null;
 
+    if (serverId) {
+      const serverExists = await this.prisma.server.findUnique({
+        where: { id: serverId },
+      });
+
+      if (!serverExists) {
+        console.warn(
+          `服务器(${serverId})不存在，将以 serverName 形式保存玩家输入`,
+        );
+        serverName = serverName ?? serverId;
+        serverId = null;
+      }
+    }
+
+    // 先创建工单（不设置 priorityScore，稍后计算）
     const ticket = await this.prisma.ticket.create({
       data: {
-        ...createTicketDto,
+        ...otherData,
+        serverId,
+        serverName,
         ticketNo,
         token,
-        status: 'NEW',
+        status: 'IN_PROGRESS',
         identityStatus: 'NOT_VERIFIED',
-        occurredAt: createTicketDto.occurredAt
-          ? new Date(createTicketDto.occurredAt)
-          : null,
+        priority: 'NORMAL', // 临时设置，稍后更新
+        priorityScore: 50, // 临时设置，稍后更新
+        occurredAt: occurredAt ? new Date(occurredAt) : null,
+        ticketIssueTypes: {
+          create: issueTypeIds?.map((issueTypeId) => ({
+            issueTypeId,
+          })) || [],
+        },
+      },
+    });
+
+    // 计算优先级（基于问题类型权重）
+    const { priorityScore, priority } =
+      await this.priorityService.calculatePriority(issueTypeIds || []);
+
+    // 更新工单的优先级和分数
+    await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        priority,
+        priorityScore,
       },
     });
 
@@ -81,7 +187,7 @@ export class TicketService {
     }
 
     return {
-      ticketId: ticket.id,
+      id: ticket.id,
       ticketNo: ticket.ticketNo,
       token: ticket.token,
     };
@@ -171,15 +277,18 @@ export class TicketService {
   }
 
   // 获取工单列表（管理端）
-  async findAll(query: {
-    status?: string;
-    priority?: string;
-    gameId?: string;
-    page?: number;
-    pageSize?: number;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-  }) {
+  async findAll(
+    query: {
+      status?: string;
+      priority?: string;
+      gameId?: string;
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    },
+    currentUser?: { id: string; role: string },
+  ) {
     const where: any = {
       deletedAt: null,
     };
@@ -192,6 +301,14 @@ export class TicketService {
     }
     if (query.gameId) {
       where.gameId = query.gameId;
+    }
+
+    if (currentUser?.role === 'AGENT') {
+      where.sessions = {
+        some: {
+          agentId: currentUser.id,
+        },
+      };
     }
 
     const page = query.page || 1;
@@ -215,7 +332,7 @@ export class TicketService {
     ]);
 
     return {
-      data: tickets,
+      items: tickets,
       total,
       page,
       pageSize,

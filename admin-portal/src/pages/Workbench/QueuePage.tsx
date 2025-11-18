@@ -6,10 +6,8 @@ import {
   Tag,
   Space,
   Typography,
-  Badge,
   Empty,
   Spin,
-  message,
   Modal,
   Avatar,
 } from 'antd';
@@ -26,6 +24,7 @@ import { useSessionStore } from '../../stores/sessionStore';
 import { websocketService } from '../../services/websocket.service';
 import type { Session } from '../../types';
 import './QueuePage.css';
+import { useMessage } from '../../hooks/useMessage';
 
 const { Title, Text } = Typography;
 const { confirm } = Modal;
@@ -33,6 +32,7 @@ const { confirm } = Modal;
 const QueuePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { queuedSessions, setQueuedSessions, removeFromQueue, addToActive } = useSessionStore();
+  const message = useMessage();
 
   // 加载排队会话
   const loadQueuedSessions = async () => {
@@ -130,7 +130,11 @@ const QueuePage: React.FC = () => {
         <div className="queue-header">
           <Title level={3}>
             <CustomerServiceOutlined /> 待接入队列
-            <Badge count={queuedSessions.length} style={{ marginLeft: 16 }} />
+            {queuedSessions.length > 0 && (
+              <span style={{ marginLeft: 12, fontSize: 14, color: '#1890ff', fontWeight: 500 }}>
+                ({queuedSessions.length})
+              </span>
+            )}
           </Title>
           
           <Button
@@ -169,7 +173,7 @@ const QueuePage: React.FC = () => {
                 <div className="queue-item-content">
                   <div className="queue-item-header">
                     <div className="queue-item-title">
-                      <Badge count={index + 1} style={{ marginRight: 12 }} />
+                      <span className="queue-item-number">{index + 1}</span>
                       <Avatar icon={<UserOutlined />} style={{ marginRight: 12 }} />
                       <div>
                         <Title level={5} style={{ margin: 0 }}>

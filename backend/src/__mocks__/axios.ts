@@ -7,4 +7,3 @@ export default {
 };
 
 export { mockPost, mockCreate };
-

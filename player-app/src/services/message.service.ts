@@ -4,19 +4,24 @@
 import apiClient from './api';
 import type { Message } from '../types';
 
-export interface CreateMessageRequest {
-  sessionId: string;
-  content: string;
-  messageType?: 'TEXT' | 'IMAGE';
+export interface PlayerMessageResult {
+  playerMessage: Message;
+  aiMessage?: Message | null;
+  difyStatus?: string | null;
 }
 
 /**
- * 发送玩家消息
+ * 发送玩家消息（触发 Dify 工作流）
  */
 export const sendPlayerMessage = async (
-  data: CreateMessageRequest
-): Promise<Message> => {
-  return apiClient.post('/messages/player', data);
+  sessionId: string,
+  content: string,
+  messageType: 'TEXT' | 'IMAGE' = 'TEXT',
+): Promise<PlayerMessageResult> => {
+  return apiClient.post(`/sessions/${sessionId}/messages`, {
+    content,
+    messageType,
+  });
 };
 
 /**

@@ -28,6 +28,7 @@ const DashboardPage: React.FC = () => {
     dayjs().subtract(7, 'day'),
     dayjs()
   ]);
+  const agentStats = metrics?.agentStats ?? [];
 
   // 加载数据
   const loadData = async () => {
@@ -302,16 +303,20 @@ const DashboardPage: React.FC = () => {
         <Col xs={24} lg={12}>
           <Card title="每日统计趋势">
             <ReactECharts
+              key="daily-stats"
               option={getDailyStatsChartOption()}
               style={{ height: '400px' }}
+              opts={{ renderer: 'canvas' }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card title="客服工作统计">
             <ReactECharts
+              key="agent-stats"
               option={getAgentStatsChartOption()}
               style={{ height: '400px' }}
+              opts={{ renderer: 'canvas' }}
             />
           </Card>
         </Col>
@@ -322,7 +327,7 @@ const DashboardPage: React.FC = () => {
         <Col span={24}>
           <Card title="在线客服状态">
             <Row gutter={[16, 16]}>
-              {metrics?.agentStats.map(agent => (
+              {agentStats.map(agent => (
                 <Col xs={24} sm={12} md={8} lg={6} key={agent.agentId}>
                   <Card size="small" className={`agent-card ${agent.isOnline ? 'online' : 'offline'}`}>
                     <div className="agent-info">

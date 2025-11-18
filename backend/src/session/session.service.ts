@@ -1,9 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+﻿import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSessionDto, TransferToAgentDto } from './dto/create-session.dto';
-import { SessionStatus, Urgency } from '@prisma/client';
-import { DifyService } from '../dify/dify.service';
+import {
+  MessageType as PrismaMessageType,
+  SessionStatus,
+  Urgency,
+} from '@prisma/client';
+import { MessageType as MessageDtoType } from '../message/dto/create-message.dto';
+import { DifyService, DifyMessageResult } from '../dify/dify.service';
 import { MessageService } from '../message/message.service';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 
 @Injectable()
 export class SessionService {
@@ -11,9 +21,10 @@ export class SessionService {
     private prisma: PrismaService,
     private difyService: DifyService,
     private messageService: MessageService,
+    private websocketGateway: WebsocketGateway,
   ) {}
 
-  // 创建会话（步骤4：AI引导）
+  // 鍒涘缓浼氳瘽锛堟楠?锛欰I寮曞锛?
   async create(createSessionDto: CreateSessionDto) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: createSessionDto.ticketId },
@@ -24,7 +35,7 @@ export class SessionService {
       throw new NotFoundException('工单不存在');
     }
 
-    // 检查是否已有会话
+    // 妫€鏌ユ槸鍚﹀凡鏈変細璇?
     const existingSession = await this.prisma.session.findFirst({
       where: {
         ticketId: createSessionDto.ticketId,
@@ -36,7 +47,7 @@ export class SessionService {
       return existingSession;
     }
 
-    // 创建新会话
+    // 鍒涘缓鏂颁細璇?
     const session = await this.prisma.session.create({
       data: {
         ticketId: createSessionDto.ticketId,
@@ -52,7 +63,7 @@ export class SessionService {
       },
     });
 
-    // 调用Dify AI获取初始回复
+    // 璋冪敤Dify AI鑾峰彇鍒濆鍥炲
     try {
       const difyResponse = await this.difyService.triage(
         ticket.description,
@@ -60,34 +71,135 @@ export class SessionService {
         ticket.game.difyBaseUrl,
       );
 
-      // 更新会话的AI识别信息
       await this.prisma.session.update({
         where: { id: session.id },
         data: {
-          detectedIntent: difyResponse.detected_intent,
-          aiUrgency: difyResponse.urgency === 'urgent' ? 'URGENT' : 'NON_URGENT',
+          detectedIntent: difyResponse.detectedIntent,
+          aiUrgency:
+            difyResponse.urgency === 'urgent' ? 'URGENT' : 'NON_URGENT',
+          difyStatus: difyResponse.status ? String(difyResponse.status) : null,
         },
       });
 
-      // 创建AI初始回复消息
-      await this.messageService.createAIMessage(
+      const aiMessage = await this.messageService.createAIMessage(
         session.id,
-        difyResponse.initial_reply,
-        { suggestedOptions: difyResponse.suggested_options },
+        difyResponse.text || '鎮ㄥソ锛屾垜姝ｅ湪涓烘偍鍒嗘瀽闂...',
+        { suggestedOptions: difyResponse.suggestedOptions },
       );
+      this.websocketGateway.notifyMessage(session.id, aiMessage);
     } catch (error) {
-      console.error('Dify AI调用失败:', error);
-      // 创建默认回复
-      await this.messageService.createAIMessage(
+      console.error('Dify AI璋冪敤澶辫触:', error);
+      // 鍒涘缓榛樿鍥炲
+      const fallback = await this.messageService.createAIMessage(
         session.id,
-        '您好，感谢您的反馈。我们正在为您处理，请稍候...',
+        '鎮ㄥソ锛屾劅璋㈡偍鐨勫弽棣堛€傛垜浠鍦ㄤ负鎮ㄥ鐞嗭紝璇风◢鍊?..',
       );
+      this.websocketGateway.notifyMessage(session.id, fallback);
     }
 
     return this.findOne(session.id);
   }
 
-  // 获取会话详情
+  // 鐜╁鍙戦€佹秷鎭紝鑷姩涓?Dify 浜や簰
+  async handlePlayerMessage(
+    sessionId: string,
+    content: string,
+    messageType: MessageDtoType = MessageDtoType.TEXT,
+  ) {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('娑堟伅鍐呭涓嶈兘涓虹┖');
+    }
+
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        ticket: {
+          include: {
+            game: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('会话不存在');
+    }
+
+    const playerMessage = await this.messageService.create(
+      {
+        sessionId,
+        content,
+        messageType,
+      },
+      'PLAYER',
+    );
+    this.websocketGateway.notifyMessage(sessionId, playerMessage);
+
+    let difyResult: DifyMessageResult | null = null;
+    let aiMessage: Awaited<
+      ReturnType<MessageService['createAIMessage']>
+    > | null = null;
+
+    if (messageType === MessageDtoType.TEXT) {
+      try {
+        difyResult = await this.difyService.sendChatMessage(
+          content,
+          session.ticket.game.difyApiKey,
+          session.ticket.game.difyBaseUrl,
+          session.difyConversationId || undefined,
+          session.ticket.playerIdOrName || 'player',
+        );
+
+        const updateData: Record<string, any> = {};
+        if (
+          difyResult.conversationId &&
+          difyResult.conversationId !== session.difyConversationId
+        ) {
+          updateData.difyConversationId = difyResult.conversationId;
+        }
+        if (difyResult.status) {
+          updateData.difyStatus = String(difyResult.status);
+        }
+        if (Object.keys(updateData).length > 0) {
+          await this.prisma.session.update({
+            where: { id: sessionId },
+            data: updateData,
+          });
+        }
+
+        if (difyResult.text) {
+          aiMessage = await this.messageService.createAIMessage(
+            sessionId,
+            difyResult.text,
+            {
+              suggestedOptions: difyResult.suggestedOptions,
+              difyStatus: difyResult.status,
+            },
+          );
+          this.websocketGateway.notifyMessage(sessionId, aiMessage);
+        }
+
+        if (
+          difyResult.status &&
+          ['5', 5, 'TRANSFER', 'HANDOFF', 'AGENT'].includes(
+            String(difyResult.status).toUpperCase(),
+          )
+        ) {
+          await this.transferToAgent(sessionId, { urgency: 'URGENT' });
+        }
+      } catch (error: any) {
+        console.error('Dify 瀵硅瘽澶辫触:', error.message || error);
+      }
+    }
+
+    return {
+      playerMessage,
+      aiMessage,
+      difyStatus: difyResult?.status || session.difyStatus || null,
+    };
+  }
+
+  // 鑾峰彇浼氳瘽璇︽儏
   async findOne(id: string) {
     const session = await this.prisma.session.findUnique({
       where: { id },
@@ -119,7 +231,7 @@ export class SessionService {
     return session;
   }
 
-  // 获取待接入会话列表（管理端）
+  // 鑾峰彇寰呮帴鍏ヤ細璇濆垪琛紙绠＄悊绔級
   async findQueuedSessions() {
     return this.prisma.session.findMany({
       where: {
@@ -129,25 +241,129 @@ export class SessionService {
         ticket: {
           include: {
             game: true,
+            server: true,
+            attachments: true,
+          },
+        },
+        agent: {
+          select: {
+            id: true,
+            username: true,
+            realName: true,
           },
         },
       },
-      orderBy: [
-        { priorityScore: 'desc' },
-        { queuedAt: 'asc' },
-      ],
+      orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
     });
   }
 
-  // 客服接入会话
+  // 会话列表（管理端/客服�?
+  async findAll(
+    query: {
+      status?: SessionStatus;
+      agentId?: string;
+      gameId?: string;
+      search?: string;
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    },
+    currentUser: { id: string; role: string },
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (currentUser?.role === 'AGENT') {
+      where.agentId = currentUser.id;
+    } else if (query.agentId) {
+      where.agentId = query.agentId;
+    }
+
+    const ticketFilter: any = {};
+
+    if (query.gameId) {
+      ticketFilter.gameId = query.gameId;
+    }
+
+    if (query.search) {
+      ticketFilter.OR = [
+        {
+          ticketNo: {
+            contains: query.search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          playerIdOrName: {
+            contains: query.search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    if (Object.keys(ticketFilter).length > 0) {
+      where.ticket = ticketFilter;
+    }
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.session.findMany({
+        where,
+        include: {
+          ticket: {
+            include: {
+              game: true,
+              server: true,
+              attachments: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              username: true,
+              realName: true,
+            },
+          },
+          messages: {
+            orderBy: { createdAt: 'asc' },
+            take: 50, // 限制消息数量，避免数据过大
+          },
+        },
+        orderBy: {
+          [query.sortBy || 'createdAt']: query.sortOrder || 'desc',
+        },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.session.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // 瀹㈡湇鎺ュ叆浼氳瘽
   async joinSession(sessionId: string, agentId: string) {
     const session = await this.findOne(sessionId);
 
     if (session.status !== 'QUEUED' && session.status !== 'PENDING') {
-      throw new BadRequestException('会话状态不允许接入');
+      throw new BadRequestException('浼氳瘽鐘舵€佷笉鍏佽鎺ュ叆');
     }
 
-    // 更新会话状态
+    // 鏇存柊浼氳瘽鐘舵€?
     const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
@@ -169,7 +385,7 @@ export class SessionService {
       },
     });
 
-    // 更新客服在线状态
+    // 鏇存柊瀹㈡湇鍦ㄧ嚎鐘舵€?
     await this.prisma.user.update({
       where: { id: agentId },
       data: { isOnline: true },
@@ -178,11 +394,11 @@ export class SessionService {
     return updatedSession;
   }
 
-  // 转人工（步骤5：智能分流）
+  // 杞汉宸ワ紙姝ラ5锛氭櫤鑳藉垎娴侊級
   async transferToAgent(sessionId: string, transferDto: TransferToAgentDto) {
     const session = await this.findOne(sessionId);
 
-    // 检查是否有在线客服
+    // 妫€鏌ユ槸鍚︽湁鍦ㄧ嚎瀹㈡湇
     const onlineAgents = await this.prisma.user.count({
       where: {
         role: 'AGENT',
@@ -201,13 +417,14 @@ export class SessionService {
         },
       });
 
-      await this.prisma.session.update({
+      const closedSession = await this.prisma.session.update({
         where: { id: sessionId },
         data: {
           status: 'CLOSED',
           closedAt: new Date(),
         },
       });
+      this.websocketGateway.notifySessionUpdate(sessionId, closedSession);
 
       return {
         queued: false,
@@ -216,9 +433,9 @@ export class SessionService {
       };
     }
 
-    // 有在线客服，进入排队队列
+    // 鏈夊湪绾垮鏈嶏紝杩涘叆鎺掗槦闃熷垪
     const priorityScore = await this.calculatePriorityScore(sessionId);
-    
+
     const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
@@ -226,23 +443,25 @@ export class SessionService {
         playerUrgency: transferDto.urgency,
         priorityScore,
         queuedAt: new Date(),
+        allowManualTransfer: false,
       },
     });
+    this.websocketGateway.notifySessionUpdate(sessionId, updatedSession);
 
-    // 重新排序队列
+    // 閲嶆柊鎺掑簭闃熷垪
     await this.reorderQueue();
 
-    // 计算排队位置
+    // 璁＄畻鎺掗槦浣嶇疆
     const queuePosition = await this.getQueuePosition(sessionId);
 
     return {
       queued: true,
       queuePosition,
-      estimatedWaitTime: queuePosition * 5, // 简单估算：每人5分钟
+      estimatedWaitTime: queuePosition * 5, // 绠€鍗曚及绠楋細姣忎汉5鍒嗛挓
     };
   }
 
-  // 计算优先级分数
+  // 璁＄畻浼樺厛绾у垎鏁?
   private async calculatePriorityScore(sessionId: string): Promise<number> {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
@@ -253,7 +472,7 @@ export class SessionService {
 
     if (!session) return 0;
 
-    // 获取所有启用的规则
+    // 鑾峰彇鎵€鏈夊惎鐢ㄧ殑瑙勫垯
     const rules = await this.prisma.urgencyRule.findMany({
       where: {
         enabled: true,
@@ -272,9 +491,9 @@ export class SessionService {
     return totalScore;
   }
 
-  // 匹配规则
+  // 鍖归厤瑙勫垯
   private matchRule(conditions: any, ticket: any, session: any): boolean {
-    // 关键词匹配
+    // 鍏抽敭璇嶅尮閰?
     if (conditions.keywords && Array.isArray(conditions.keywords)) {
       const matches = conditions.keywords.some((keyword: string) =>
         ticket.description.includes(keyword),
@@ -282,12 +501,12 @@ export class SessionService {
       if (!matches) return false;
     }
 
-    // 意图匹配
+    // 鎰忓浘鍖归厤
     if (conditions.intent && session.detectedIntent !== conditions.intent) {
       return false;
     }
 
-    // 身份状态匹配
+    // 韬唤鐘舵€佸尮閰?
     if (
       conditions.identityStatus &&
       ticket.identityStatus !== conditions.identityStatus
@@ -295,12 +514,12 @@ export class SessionService {
       return false;
     }
 
-    // 游戏匹配
+    // 娓告垙鍖归厤
     if (conditions.gameId && ticket.gameId !== conditions.gameId) {
       return false;
     }
 
-    // 优先级匹配
+    // 浼樺厛绾у尮閰?
     if (conditions.priority && ticket.priority !== conditions.priority) {
       return false;
     }
@@ -308,17 +527,14 @@ export class SessionService {
     return true;
   }
 
-  // 重新排序队列
+  // 閲嶆柊鎺掑簭闃熷垪
   private async reorderQueue() {
     const queuedSessions = await this.prisma.session.findMany({
       where: { status: 'QUEUED' },
-      orderBy: [
-        { priorityScore: 'desc' },
-        { queuedAt: 'asc' },
-      ],
+      orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
     });
 
-    // 更新排队位置
+    // 鏇存柊鎺掗槦浣嶇疆
     for (let i = 0; i < queuedSessions.length; i++) {
       await this.prisma.session.update({
         where: { id: queuedSessions[i].id },
@@ -327,7 +543,7 @@ export class SessionService {
     }
   }
 
-  // 获取排队位置
+  // 鑾峰彇鎺掗槦浣嶇疆
   private async getQueuePosition(sessionId: string): Promise<number> {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
@@ -353,7 +569,7 @@ export class SessionService {
     return aheadCount;
   }
 
-  // 结束会话
+  // 缁撴潫浼氳瘽
   async closeSession(sessionId: string) {
     const session = await this.findOne(sessionId);
 
@@ -365,5 +581,16 @@ export class SessionService {
       },
     });
   }
-}
 
+  async closeByPlayer(sessionId: string) {
+    const session = await this.prisma.session.update({
+      where: { id: sessionId },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date(),
+      },
+    });
+    this.websocketGateway.notifySessionUpdate(sessionId, session);
+    return session;
+  }
+}

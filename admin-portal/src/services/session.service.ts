@@ -1,5 +1,32 @@
 import apiClient from './api';
-import type { Session } from '../types';
+import type { Session, PaginationParams, PaginationResponse } from '../types';
+
+export interface SessionQueryParams extends PaginationParams {
+  status?: string;
+  agentId?: string;
+  gameId?: string;
+  search?: string;
+}
+
+/**
+ * 获取会话列表（管理端）
+ */
+export const getSessions = async (
+  params: SessionQueryParams = {},
+): Promise<PaginationResponse<Session>> => {
+  return apiClient.get('/sessions', { params });
+};
+
+export const getActiveSessions = async (): Promise<Session[]> => {
+  const result = await getSessions({
+    status: 'IN_PROGRESS',
+    page: 1,
+    pageSize: 50,
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+  });
+  return result?.items ?? [];
+};
 
 /**
  * 获取待接入会话列表

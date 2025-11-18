@@ -56,4 +56,3 @@ export class UrgencyRuleController {
     return this.urgencyRuleService.recalculateQueue();
   }
 }
-

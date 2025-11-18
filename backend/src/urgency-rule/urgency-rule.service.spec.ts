@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { UrgencyRuleService } from './urgency-rule.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateUrgencyRuleDto, UpdateUrgencyRuleDto } from './dto/create-urgency-rule.dto';
+import {
+  CreateUrgencyRuleDto,
+  UpdateUrgencyRuleDto,
+} from './dto/create-urgency-rule.dto';
 
 describe('UrgencyRuleService', () => {
   let service: UrgencyRuleService;
@@ -84,7 +87,9 @@ describe('UrgencyRuleService', () => {
     it('应该抛出异常当规则不存在', async () => {
       mockPrismaService.urgencyRule.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -209,4 +214,3 @@ describe('UrgencyRuleService', () => {
     });
   });
 });
-

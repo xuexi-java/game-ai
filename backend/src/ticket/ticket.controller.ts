@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('tickets')
 export class TicketController {
@@ -22,12 +23,38 @@ export class TicketController {
   // 玩家端API - 检查未关闭工单
   @Post('check-open')
   checkOpenTicket(
-    @Body() body: { gameId: string; serverId?: string; playerIdOrName: string },
+    @Body()
+    body: {
+      gameId: string;
+      serverId?: string;
+      serverName?: string;
+      playerIdOrName: string;
+    },
   ) {
     return this.ticketService.checkOpenTicket(
       body.gameId,
       body.serverId || null,
+      body.serverName || null,
       body.playerIdOrName,
+    );
+  }
+
+  // 玩家端API - 检查相同问题类型的未完成工单
+  @Post('check-open-by-issue-type')
+  checkOpenTicketByIssueType(
+    @Body()
+    body: {
+      gameId: string;
+      serverId?: string; // 可选，可能是 serverId 或 serverName
+      playerIdOrName: string;
+      issueTypeId: string;
+    },
+  ) {
+    return this.ticketService.checkOpenTicketByIssueType(
+      body.gameId,
+      body.serverId || null,
+      body.playerIdOrName,
+      body.issueTypeId,
     );
   }
 
@@ -47,16 +74,19 @@ export class TicketController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'AGENT')
   @Get()
-  findAll(@Query() query: any) {
-    return this.ticketService.findAll({
-      status: query.status,
-      priority: query.priority,
-      gameId: query.gameId,
-      page: query.page ? parseInt(query.page) : 1,
-      pageSize: query.pageSize ? parseInt(query.pageSize) : 10,
-      sortBy: query.sortBy || 'createdAt',
-      sortOrder: query.sortOrder || 'desc',
-    });
+  findAll(@Query() query: any, @CurrentUser() user: any) {
+    return this.ticketService.findAll(
+      {
+        status: query.status,
+        priority: query.priority,
+        gameId: query.gameId,
+        page: query.page ? parseInt(query.page) : 1,
+        pageSize: query.pageSize ? parseInt(query.pageSize) : 10,
+        sortBy: query.sortBy || 'createdAt',
+        sortOrder: query.sortOrder || 'desc',
+      },
+      user,
+    );
   }
 
   // 管理端API - 获取工单详情
@@ -83,4 +113,3 @@ export class TicketController {
     return this.ticketService.updatePriority(id, body.priority);
   }
 }
-

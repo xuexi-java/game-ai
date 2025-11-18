@@ -99,7 +99,9 @@ describe('GameService', () => {
     it('应该抛出异常当游戏不存在', async () => {
       mockPrismaService.game.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -311,4 +313,3 @@ describe('GameService', () => {
     });
   });
 });
-

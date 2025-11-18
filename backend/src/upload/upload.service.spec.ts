@@ -1,6 +1,6 @@
 /**
  * 文件上传服务单元测试
- * 
+ *
  * 测试覆盖：
  * - 本地文件存储
  * - 阿里云 OSS 存储
@@ -27,13 +27,17 @@ const mockOSSClient = {
   delete: mockDelete,
 };
 
-jest.mock('ali-oss', () => {
-  const MockOSS = jest.fn().mockImplementation(() => mockOSSClient);
-  return {
-    __esModule: true,
-    default: MockOSS,
-  };
-}, { virtual: true });
+jest.mock(
+  'ali-oss',
+  () => {
+    const MockOSS = jest.fn().mockImplementation(() => mockOSSClient);
+    return {
+      __esModule: true,
+      default: MockOSS,
+    };
+  },
+  { virtual: true },
+);
 
 describe('UploadService', () => {
   let service: UploadService;
@@ -256,9 +260,7 @@ describe('UploadService', () => {
 
       await service.deleteFile(fileUrl);
 
-      expect(mockDelete).toHaveBeenCalledWith(
-        'tickets/ticket-123/test.jpg',
-      );
+      expect(mockDelete).toHaveBeenCalledWith('tickets/ticket-123/test.jpg');
     });
 
     it('应该处理 OSS 删除失败但不抛出异常', async () => {
@@ -348,4 +350,3 @@ describe('UploadService', () => {
     });
   });
 });
-

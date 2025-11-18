@@ -3,8 +3,15 @@ export interface User {
   id: string;
   username: string;
   role: 'ADMIN' | 'AGENT';
-  isOnline: boolean;
+  realName?: string;
+  email?: string;
+  phone?: string;
+  avatar?: string;
+  isOnline?: boolean;
   createdAt: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface LoginRequest {
@@ -41,16 +48,29 @@ export interface Server {
 export interface Ticket {
   id: string;
   ticketNo: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'NEW' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   game: Game;
   server?: Server;
+  serverName?: string | null;
   playerIdOrName: string;
   description: string;
   occurredAt?: string;
   paymentOrderNo?: string;
   createdAt: string;
   updatedAt: string;
+  attachments?: TicketAttachment[];
+}
+
+export interface TicketAttachment {
+  id: string;
+  ticketId: string;
+  fileUrl: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number;
+  sortOrder?: number;
+  createdAt?: string;
 }
 
 // 会话相关类型
@@ -63,9 +83,17 @@ export interface Session {
   priorityScore?: number;
   queuedAt?: string;
   agentId?: string;
+  agent?: {
+    id: string;
+    username: string;
+    realName?: string;
+  } | null;
   ticket: Ticket;
   messages?: Message[];
   createdAt: string;
+  updatedAt?: string;
+  startedAt?: string;
+  closedAt?: string;
 }
 
 // 消息相关类型
@@ -116,23 +144,26 @@ export interface DashboardMetrics {
   }>;
 }
 
+export interface UrgencyRuleConditions {
+  issueTypeIds?: string[]; // 新增：问题类型 IDs
+  keywords?: string[];
+  intent?: string;
+  identityStatus?: string;
+  gameId?: string;
+  serverId?: string;
+  priority?: string;
+}
+
 // 紧急规则类型
 export interface UrgencyRule {
   id: string;
   name: string;
   enabled: boolean;
-  priority: number;
-  conditions: {
-    keywords?: string[];
-    gameIds?: string[];
-    priority?: string;
-  };
-  actions: {
-    urgencyLevel: 'URGENT' | 'NON_URGENT';
-    priorityBoost: number;
-    autoAssignAgent?: boolean;
-  };
+  priorityWeight: number;
+  description?: string;
+  conditions: UrgencyRuleConditions;
   createdAt: string;
+  updatedAt: string;
 }
 
 // 分页相关类型
@@ -149,6 +180,19 @@ export interface PaginationResponse<T> {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+// 问题类型
+export interface IssueType {
+  id: string;
+  name: string;
+  description?: string;
+  priorityWeight: number;
+  enabled: boolean;
+  sortOrder: number;
+  icon?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // API响应类型

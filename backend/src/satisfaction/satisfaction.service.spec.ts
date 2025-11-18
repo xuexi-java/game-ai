@@ -91,7 +91,9 @@ describe('SatisfactionService', () => {
         tags: [],
       };
 
-      await expect(service.create(createRatingDto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(createRatingDto)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('应该抛出异常当会话尚未结束', async () => {
@@ -108,7 +110,9 @@ describe('SatisfactionService', () => {
         tags: [],
       };
 
-      await expect(service.create(createRatingDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createRatingDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('应该抛出异常当会话已评价', async () => {
@@ -126,7 +130,9 @@ describe('SatisfactionService', () => {
       };
 
       mockPrismaService.session.findUnique.mockResolvedValue(mockSession);
-      mockPrismaService.satisfactionRating.findUnique.mockResolvedValue(existingRating);
+      mockPrismaService.satisfactionRating.findUnique.mockResolvedValue(
+        existingRating,
+      );
 
       const createRatingDto: CreateRatingDto = {
         sessionId: 'session1',
@@ -134,7 +140,9 @@ describe('SatisfactionService', () => {
         tags: [],
       };
 
-      await expect(service.create(createRatingDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createRatingDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -151,7 +159,9 @@ describe('SatisfactionService', () => {
         },
       };
 
-      mockPrismaService.satisfactionRating.findUnique.mockResolvedValue(mockRating);
+      mockPrismaService.satisfactionRating.findUnique.mockResolvedValue(
+        mockRating,
+      );
 
       const result = await service.findBySession('session1');
 
@@ -169,7 +179,9 @@ describe('SatisfactionService', () => {
         { id: '5', rating: 5 },
       ];
 
-      mockPrismaService.satisfactionRating.findMany.mockResolvedValue(mockRatings);
+      mockPrismaService.satisfactionRating.findMany.mockResolvedValue(
+        mockRatings,
+      );
 
       const result = await service.getAgentStats('agent1');
 
@@ -213,12 +225,16 @@ describe('SatisfactionService', () => {
       const startDate = new Date('2024-01-01');
       const endDate = new Date('2024-12-31');
 
-      mockPrismaService.satisfactionRating.findMany.mockResolvedValue(mockRatings);
+      mockPrismaService.satisfactionRating.findMany.mockResolvedValue(
+        mockRatings,
+      );
 
       const result = await service.getAgentStats('agent1', startDate, endDate);
 
       expect(result.total).toBe(2);
-      expect(mockPrismaService.satisfactionRating.findMany).toHaveBeenCalledWith({
+      expect(
+        mockPrismaService.satisfactionRating.findMany,
+      ).toHaveBeenCalledWith({
         where: {
           agentId: 'agent1',
           createdAt: {
@@ -230,4 +246,3 @@ describe('SatisfactionService', () => {
     });
   });
 });
-

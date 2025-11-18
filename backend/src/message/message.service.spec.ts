@@ -213,7 +213,9 @@ describe('MessageService', () => {
     it('应该抛出异常当会话不存在', async () => {
       mockPrismaService.session.findUnique.mockResolvedValue(null);
 
-      await expect(service.findBySession('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findBySession('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -306,4 +308,3 @@ describe('MessageService', () => {
     });
   });
 });
-

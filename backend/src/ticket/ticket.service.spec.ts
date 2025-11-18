@@ -44,28 +44,41 @@ describe('TicketService', () => {
         id: '1',
         ticketNo: 'T-20240101-001',
         status: 'NEW',
+        token: 'token-1',
       };
 
       mockPrismaService.ticket.findFirst.mockResolvedValue(mockTicket);
 
-      const result = await service.checkOpenTicket('game1', 'server1', 'player1');
+      const result = await service.checkOpenTicket(
+        'game1',
+        'server1',
+        null,
+        'player1',
+      );
 
       expect(result).toEqual({
         hasOpenTicket: true,
-        ticketNo: 'T-20240101-001',
-        ticketId: '1',
+        ticket: {
+          id: '1',
+          ticketNo: 'T-20240101-001',
+          token: 'token-1',
+        },
       });
     });
 
     it('应该返回false当不存在未关闭的工单', async () => {
       mockPrismaService.ticket.findFirst.mockResolvedValue(null);
 
-      const result = await service.checkOpenTicket('game1', 'server1', 'player1');
+      const result = await service.checkOpenTicket(
+        'game1',
+        'server1',
+        null,
+        'player1',
+      );
 
       expect(result).toEqual({
         hasOpenTicket: false,
-        ticketNo: undefined,
-        ticketId: undefined,
+        ticket: null,
       });
     });
   });
@@ -93,7 +106,7 @@ describe('TicketService', () => {
 
       const result = await service.create(createTicketDto);
 
-      expect(result).toHaveProperty('ticketId');
+      expect(result).toHaveProperty('id');
       expect(result).toHaveProperty('ticketNo');
       expect(result).toHaveProperty('token');
       expect(mockPrismaService.ticket.create).toHaveBeenCalled();
@@ -164,7 +177,9 @@ describe('TicketService', () => {
     it('应该抛出异常当工单不存在', async () => {
       mockPrismaService.ticket.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByToken('invalid-token')).rejects.toThrow(NotFoundException);
+      await expect(service.findByToken('invalid-token')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('应该抛出异常当工单已删除', async () => {
@@ -177,7 +192,9 @@ describe('TicketService', () => {
 
       mockPrismaService.ticket.findUnique.mockResolvedValue(mockTicket);
 
-      await expect(service.findByToken('deleted-token')).rejects.toThrow(NotFoundException);
+      await expect(service.findByToken('deleted-token')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -203,7 +220,9 @@ describe('TicketService', () => {
     it('应该抛出异常当工单不存在', async () => {
       mockPrismaService.ticket.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -308,4 +327,3 @@ describe('TicketService', () => {
     });
   });
 });
-

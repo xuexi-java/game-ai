@@ -110,6 +110,50 @@
     flex-direction: column;
 }
 
+.agent-ticket-info {
+    padding: 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.agent-ticket-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.agent-ticket-grid .label,
+.agent-ticket-problem .label,
+.agent-ticket-attachments .label {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+}
+
+.agent-ticket-problem {
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.agent-ticket-attachments {
+    margin-top: 4px;
+}
+
+.agent-ticket-attachment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
 .chat-messages {
     flex: 1;
     padding: 16px;

@@ -78,7 +78,12 @@ export class UrgencyRuleService {
       let totalScore = 0;
 
       for (const rule of rules) {
-        if (this.matchRule(rule.conditions as any, session.ticket, session)) {
+        const matches = await this.matchRule(
+          rule.conditions as any,
+          session.ticket,
+          session,
+        );
+        if (matches) {
           totalScore += rule.priorityWeight;
         }
       }
@@ -95,10 +100,36 @@ export class UrgencyRuleService {
     return { message: '队列排序已重新计算' };
   }
 
-  private matchRule(conditions: any, ticket: any, session: any): boolean {
-    if (conditions.keywords && Array.isArray(conditions.keywords)) {
+  private async matchRule(
+    conditions: any,
+    ticket: any,
+    session: any,
+  ): Promise<boolean> {
+    // 问题类型匹配是必需的（核心匹配条件）
+    if (!conditions.issueTypeIds || !Array.isArray(conditions.issueTypeIds) || conditions.issueTypeIds.length === 0) {
+      return false;
+    }
+
+    // 获取工单的问题类型
+    const ticketIssueTypes = await this.prisma.ticketIssueType.findMany({
+      where: { ticketId: ticket.id },
+      select: { issueTypeId: true },
+    });
+    const ticketIssueTypeIds = ticketIssueTypes.map((t) => t.issueTypeId);
+
+    // 检查工单是否包含规则中指定的任何问题类型
+    const hasMatchingIssueType = conditions.issueTypeIds.some((id: string) =>
+      ticketIssueTypeIds.includes(id),
+    );
+
+    if (!hasMatchingIssueType) {
+      return false;
+    }
+
+    // 以下为可选的附加匹配条件（用于更精确的匹配）
+    if (conditions.keywords && Array.isArray(conditions.keywords) && conditions.keywords.length > 0) {
       const matches = conditions.keywords.some((keyword: string) =>
-        ticket.description.includes(keyword),
+        ticket.description.toLowerCase().includes(keyword.toLowerCase()),
       );
       if (!matches) return false;
     }
@@ -118,6 +149,10 @@ export class UrgencyRuleService {
       return false;
     }
 
+    if (conditions.serverId && ticket.serverId !== conditions.serverId) {
+      return false;
+    }
+
     if (conditions.priority && ticket.priority !== conditions.priority) {
       return false;
     }
@@ -128,10 +163,7 @@ export class UrgencyRuleService {
   private async reorderQueue() {
     const queuedSessions = await this.prisma.session.findMany({
       where: { status: 'QUEUED' },
-      orderBy: [
-        { priorityScore: 'desc' },
-        { queuedAt: 'asc' },
-      ],
+      orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
     });
 
     for (let i = 0; i < queuedSessions.length; i++) {
@@ -142,4 +174,3 @@ export class UrgencyRuleService {
     }
   }
 }
-

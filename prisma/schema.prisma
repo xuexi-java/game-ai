@@ -85,8 +85,9 @@ model Ticket {
   occurredAt      DateTime?
   paymentOrderNo  String?
   identityStatus  IdentityStatus @default(NOT_VERIFIED)
-  status          TicketStatus   @default(NEW)
+  status          TicketStatus   @default(IN_PROGRESS)
   priority        Priority       @default(NORMAL)
+  priorityScore   Int            @default(50) // 新增：优先级分数
   token           String         @unique
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -100,11 +101,13 @@ model Ticket {
   sessions        Session[]
   messages        TicketMessage[]
   satisfactionRatings SatisfactionRating[]
+  ticketIssueTypes TicketIssueType[] // 新增：关联的问题类型
 
   @@index([ticketNo])
   @@index([gameId, playerIdOrName])
   @@index([status])
   @@index([priority])
+  @@index([priorityScore(desc)]) // 新增：优先级分数索引
   @@index([createdAt])
   @@index([token])
   @@map("Ticket")
@@ -156,6 +159,9 @@ model Session {
   queuedAt      DateTime?
   startedAt     DateTime?
   closedAt      DateTime?
+  difyConversationId String?
+  difyStatus    String?
+  allowManualTransfer Boolean @default(true)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -303,3 +309,44 @@ model SatisfactionRating {
   @@map("SatisfactionRating")
 }
 
+
+
+// ==================== 问题类型 ====================
+
+model IssueType {
+  id              String   @id @default(uuid())
+  name            String   // 问题类型名称
+  description     String?  @db.Text // 问题描述
+  priorityWeight  Int      @default(50) // 优先级权重 1-100
+  enabled         Boolean  @default(true) // 是否启用
+  sortOrder       Int      @default(0) // 显示排序
+  icon            String?  // 图标
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // 关系
+  ticketIssueTypes TicketIssueType[]
+
+  @@index([enabled, sortOrder])
+  @@index([priorityWeight(desc)])
+  @@map("IssueType")
+}
+
+// ==================== 工单-问题类型关联 ====================
+
+model TicketIssueType {
+  id          String   @id @default(uuid())
+  ticketId    String
+  issueTypeId String
+  createdAt   DateTime @default(now())
+
+  // 关系
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  issueType IssueType @relation(fields: [issueTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, issueTypeId])
+  @@index([ticketId])
+  @@index([issueTypeId])
+  @@map("TicketIssueType")
+}

@@ -28,7 +28,10 @@ export class WebsocketGateway
   server: Server;
 
   private readonly logger = new Logger(WebsocketGateway.name);
-  private connectedClients = new Map<string, { userId?: string; role?: string }>();
+  private connectedClients = new Map<
+    string,
+    { userId?: string; role?: string }
+  >();
 
   constructor(
     private jwtService: JwtService,
@@ -39,14 +42,17 @@ export class WebsocketGateway
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.replace('Bearer ', '');
-      
+      const token =
+        client.handshake.auth?.token ||
+        client.handshake.headers?.authorization?.replace('Bearer ', '');
+
       if (token) {
         try {
           const payload = this.jwtService.verify(token, {
-            secret: this.configService.get<string>('JWT_SECRET') || 'your-secret-key',
+            secret:
+              this.configService.get<string>('JWT_SECRET') || 'your-secret-key',
           });
-          
+
           const user = await this.prisma.user.findUnique({
             where: { id: payload.sub },
           });
@@ -82,13 +88,15 @@ export class WebsocketGateway
 
   async handleDisconnect(client: Socket) {
     const clientInfo = this.connectedClients.get(client.id);
-    
+
     if (clientInfo?.userId) {
       // 更新用户离线状态
-      await this.prisma.user.update({
-        where: { id: clientInfo.userId },
-        data: { isOnline: false },
-      }).catch(() => {});
+      await this.prisma.user
+        .update({
+          where: { id: clientInfo.userId },
+          data: { isOnline: false },
+        })
+        .catch(() => {});
     }
 
     this.connectedClients.delete(client.id);
@@ -110,8 +118,7 @@ export class WebsocketGateway
         'PLAYER',
       );
 
-      // 广播消息给会话相关方
-      this.server.emit(`session:${data.sessionId}:message`, message);
+      this.notifyMessage(data.sessionId, message);
 
       return { success: true, messageId: message.id };
     } catch (error) {
@@ -141,8 +148,7 @@ export class WebsocketGateway
         clientInfo.userId,
       );
 
-      // 广播消息
-      this.server.emit(`session:${data.sessionId}:message`, message);
+      this.notifyMessage(data.sessionId, message);
 
       return { success: true, messageId: message.id };
     } catch (error) {
@@ -190,5 +196,9 @@ export class WebsocketGateway
       waitTime,
     });
   }
-}
 
+  // 通知新消息
+  notifyMessage(sessionId: string, message: any) {
+    this.server.to(`session:${sessionId}`).emit('message', message);
+  }
+}

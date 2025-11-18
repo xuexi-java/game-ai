@@ -1,6 +1,6 @@
 /**
  * 认证服务单元测试
- * 
+ *
  * 测试覆盖：
  * - 用户验证（管理员、客服、bcrypt密码）
  * - 登录功能
@@ -36,13 +36,13 @@ describe('AuthService', () => {
   const mockPrismaService = {
     user: {
       findUnique: jest.fn(), // Mock 查找用户方法
-      update: jest.fn(),     // Mock 更新用户方法
+      update: jest.fn(), // Mock 更新用户方法
     },
   };
 
   // Mock JWT 服务（模拟 Token 生成和验证）
   const mockJwtService = {
-    sign: jest.fn(),   // Mock Token 签名方法
+    sign: jest.fn(), // Mock Token 签名方法
     verify: jest.fn(), // Mock Token 验证方法
   };
 
@@ -146,15 +146,18 @@ describe('AuthService', () => {
       const result = await service.validateUser('user1', 'password123');
 
       expect(result).toBeDefined();
-      expect(bcrypt.compare).toHaveBeenCalledWith('password123', hashedPassword);
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'password123',
+        hashedPassword,
+      );
     });
 
     it('应该抛出异常当用户不存在', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.validateUser('nonexistent', 'password')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.validateUser('nonexistent', 'password'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('应该抛出异常当用户已删除', async () => {
@@ -184,9 +187,9 @@ describe('AuthService', () => {
 
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
-      await expect(service.validateUser('admin', 'wrongpassword')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.validateUser('admin', 'wrongpassword'),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 
@@ -257,4 +260,3 @@ describe('AuthService', () => {
     });
   });
 });
-

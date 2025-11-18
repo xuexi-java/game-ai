@@ -17,4 +17,3 @@ export class IdentityCheckDto {
   @IsNotEmpty()
   playerIdOrName: string;
 }
-

@@ -1,10 +1,11 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosResponse } from 'axios';
-import { message } from 'antd';
+import { getGlobalMessage } from '../utils/message';
+import { API_BASE_URL } from '../config/api';
 
 // 创建axios实例
 const apiClient: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:3000/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -39,6 +40,7 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     const { response } = error;
+    const message = getGlobalMessage();
     
     if (response) {
       const { status, data } = response;

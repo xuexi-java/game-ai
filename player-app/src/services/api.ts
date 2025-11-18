@@ -9,9 +9,6 @@ import { API_BASE_URL } from '../config/api';
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // 请求拦截器
@@ -28,8 +25,17 @@ apiClient.interceptors.request.use(
 // 响应拦截器
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    // 统一处理响应数据
-    return response.data;
+    const payload = response.data;
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      'success' in payload &&
+      'data' in payload
+    ) {
+      return (payload as { data: unknown }).data;
+    }
+    // 兼容直接返回数据的情形
+    return payload;
   },
   (error) => {
     // 统一错误处理

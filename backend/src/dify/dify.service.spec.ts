@@ -1,6 +1,6 @@
 /**
  * Dify AI 服务单元测试
- * 
+ *
  * 测试覆盖：
  * - AI分流功能
  * - 优化客服回复
@@ -28,7 +28,7 @@ describe('DifyService', () => {
   beforeEach(async () => {
     // 重置所有mock
     jest.clearAllMocks();
-    
+
     // 设置 axios.create 的返回值
     (mockAxios.create as jest.Mock) = jest.fn(() => mockAxiosInstance);
 
@@ -100,7 +100,7 @@ describe('DifyService', () => {
     it('应该在工作流API失败时回退到对话API', async () => {
       // 工作流API失败
       mockPost.mockRejectedValueOnce(new Error('工作流API调用失败'));
-      
+
       // 对话API成功
       const chatResponse = {
         data: {
@@ -126,7 +126,7 @@ describe('DifyService', () => {
         detected_intent: 'inquiry',
         urgency: 'non_urgent',
       });
-      
+
       // 验证调用了对话API
       expect(mockPost).toHaveBeenCalledWith(
         'http://118.89.16.95/v1/chat-messages',

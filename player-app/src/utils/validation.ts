@@ -13,13 +13,18 @@ export const validateGameId: FieldValidator = (_, value) => {
   return Promise.resolve();
 };
 
-// 验证服务器ID
-export const validateServerId: FieldValidator = (_, value) => {
-  if (!value) {
-    return Promise.reject(new Error('请输入服务器'));
+// 验证区服名称（玩家自行输入）
+export const validateServerName: FieldValidator = (_, value) => {
+  if (!value || !value.trim()) {
+    return Promise.reject(new Error('请输入区服名称'));
   }
-  if (value.length < 1 || value.length > 50) {
-    return Promise.reject(new Error('服务器名称长度应在1-50个字符之间'));
+  const trimmed = value.trim();
+  if (trimmed.length < 1 || trimmed.length > 50) {
+    return Promise.reject(new Error('区服名称长度应在1-50个字符之间'));
+  }
+  const invalidChars = /[<>'"&]/;
+  if (invalidChars.test(trimmed)) {
+    return Promise.reject(new Error('区服名称不能包含字符 < > \' " &'));
   }
   return Promise.resolve();
 };
@@ -66,24 +71,24 @@ export const validatePaymentOrderNo: FieldValidator = (_, value) => {
 };
 
 // 验证文件大小
-export const validateFileSize = (file: File, maxSizeMB: number = 10) => {
+export const validateFileSize = (file: File, maxSizeMB: number = 10): void => {
   const fileSizeMB = file.size / 1024 / 1024;
   if (fileSizeMB > maxSizeMB) {
-    return Promise.reject(new Error(`文件大小不能超过${maxSizeMB}MB`));
+    throw new Error(`文件大小不能超过${maxSizeMB}MB`);
   }
-  return Promise.resolve();
 };
 
 // 验证文件类型
 export const validateFileType = (
   file: File,
   allowedTypes: string[] = ['image/jpeg', 'image/png', 'image/gif']
-) => {
+): void => {
   if (!allowedTypes.includes(file.type)) {
-    const typeNames = allowedTypes.map((type) => type.split('/')[1].toUpperCase()).join('、');
-    return Promise.reject(new Error(`只支持${typeNames}格式的文件`));
+    const typeNames = allowedTypes
+      .map((type) => type.split('/')[1].toUpperCase())
+      .join('、');
+    throw new Error(`只支持${typeNames}格式的文件`);
   }
-  return Promise.resolve();
 };
 
 // 验证消息内容

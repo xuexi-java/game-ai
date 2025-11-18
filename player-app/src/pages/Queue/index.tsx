@@ -3,17 +3,19 @@
  */
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, Typography, Spin, message } from 'antd';
+import { Card, Typography, Spin } from 'antd';
 import { getSession } from '../../services/session.service';
 import { useSessionStore } from '../../stores/sessionStore';
 import { io } from 'socket.io-client';
 import { WS_URL } from '../../config/api';
+import { useMessage } from '../../hooks/useMessage';
 
 const { Title, Paragraph } = Typography;
 
 const QueuePage = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { session, setSession, updateSession } = useSessionStore();
+  const messageApi = useMessage();
 
   useEffect(() => {
     if (!sessionId) return;
@@ -25,7 +27,7 @@ const QueuePage = () => {
         setSession(sessionData);
       } catch (error) {
         console.error('加载会话失败:', error);
-        message.error('加载会话失败');
+        messageApi.error('加载会话失败');
       }
     };
 
@@ -40,14 +42,14 @@ const QueuePage = () => {
       newSocket.emit('join-session', sessionId);
     });
 
-    newSocket.on('queue-updated', (data) => {
+    newSocket.on('queue-update', (data) => {
       updateSession({
         priorityScore: data.priorityScore,
         queuedAt: data.queuedAt,
       });
     });
 
-    newSocket.on('session-updated', (sessionData) => {
+    newSocket.on('session-update', (sessionData) => {
       updateSession(sessionData);
       if (sessionData.status === 'IN_PROGRESS') {
         // 客服已接入，跳转到聊天页面
@@ -58,7 +60,7 @@ const QueuePage = () => {
     return () => {
       newSocket.disconnect();
     };
-  }, [sessionId, setSession, updateSession]);
+  }, [sessionId, setSession, updateSession, messageApi]);
 
   if (!session) {
     return (

@@ -10,6 +10,7 @@ export interface SessionState {
   
   setSession: (session: Session) => void;
   addMessage: (message: Message) => void;
+  removeMessage: (messageId: string) => void;
   updateSession: (updates: Partial<Session>) => void;
   reset: () => void;
 }
@@ -21,13 +22,40 @@ export const useSessionStore = create<SessionState>((set) => ({
   setSession: (session) => {
     set({ 
       session,
-      messages: session.messages || [],
+      messages: Array.isArray(session.messages) ? session.messages : [],
     });
   },
   
   addMessage: (message) => {
+    set((state) => {
+      // 检查消息是否已存在，避免重复添加
+      const exists = state.messages.some((msg) => msg.id === message.id);
+      if (exists) {
+        return state;
+      }
+      return {
+        messages: [...state.messages, message],
+        session: state.session
+          ? {
+              ...state.session,
+              messages: [...(state.session.messages || []), message],
+            }
+          : state.session,
+      };
+    });
+  },
+
+  removeMessage: (messageId) => {
     set((state) => ({
-      messages: [...state.messages, message],
+      messages: state.messages.filter((msg) => msg.id !== messageId),
+      session: state.session
+        ? {
+            ...state.session,
+            messages: (state.session.messages || []).filter(
+              (msg) => msg.id !== messageId,
+            ),
+          }
+        : state.session,
     }));
   },
   

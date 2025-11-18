@@ -24,10 +24,11 @@ export class AuthService {
 
     // 简单的密码验证（开发环境）
     // 生产环境应该使用 bcrypt.compare
-    const isPasswordValid = 
-      password === 'admin123' && user.username === 'admin' ||
-      password === 'agent123' && user.username === 'agent1' ||
-      user.password.startsWith('$2b$') && await bcrypt.compare(password, user.password);
+    const isPasswordValid =
+      (password === 'admin123' && user.username === 'admin') ||
+      (password === 'agent123' && user.username === 'agent1') ||
+      (user.password.startsWith('$2b$') &&
+        (await bcrypt.compare(password, user.password)));
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('用户名或密码错误');

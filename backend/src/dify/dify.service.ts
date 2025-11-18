@@ -2,18 +2,14 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
-export interface DifyTriageResponse {
-  initial_reply: string;
-  suggested_options: string[];
-  detected_intent: string;
+export interface DifyMessageResult {
+  text: string;
+  status?: number | string;
+  suggestedOptions: string[];
+  detectedIntent: string;
   urgency: 'urgent' | 'non_urgent';
-}
-
-export interface DifyChatMessageResponse {
-  answer: string;
-  conversation_id?: string;
-  message_id?: string;
   metadata?: any;
+  conversationId?: string;
 }
 
 @Injectable()
@@ -34,7 +30,7 @@ export class DifyService {
     description: string,
     apiKey: string,
     baseUrl: string,
-  ): Promise<DifyTriageResponse> {
+  ): Promise<DifyMessageResult> {
     try {
       // 尝试使用工作流API（如果配置了工作流）
       const response = await this.axiosInstance.post(
@@ -55,28 +51,23 @@ export class DifyService {
       );
 
       // 解析Dify返回的数据
-      const output = response.data?.outputs || {};
-      
-      return {
-        initial_reply: output.initial_reply || '您好，我正在为您分析问题...',
-        suggested_options: output.suggested_options || [],
-        detected_intent: output.detected_intent || 'unknown',
-        urgency: output.urgency === 'urgent' ? 'urgent' : 'non_urgent',
-      };
+      const output =
+        response.data?.outputs || response.data?.data?.outputs || response.data;
+      return this.parseResult(output);
     } catch (error: any) {
       console.error('Dify 工作流API调用失败，尝试使用对话API:', error.message);
-      
+
       // 如果工作流API失败，尝试使用对话API
       try {
         return await this.triageWithChatAPI(description, apiKey, baseUrl);
       } catch (chatError: any) {
         console.error('Dify 对话API调用失败:', chatError.message);
-        
+
         // 返回默认响应
         return {
-          initial_reply: '您好，感谢您的反馈。我们正在为您处理，请稍候...',
-          suggested_options: ['转人工客服', '查看常见问题'],
-          detected_intent: 'unknown',
+          text: '您好，感谢您的反馈。我们正在为您处理，请稍候...',
+          suggestedOptions: ['转人工客服', '查看常见问题'],
+          detectedIntent: 'unknown',
           urgency: 'non_urgent',
         };
       }
@@ -91,7 +82,7 @@ export class DifyService {
     description: string,
     apiKey: string,
     baseUrl: string,
-  ): Promise<DifyTriageResponse> {
+  ): Promise<DifyMessageResult> {
     try {
       const response = await this.axiosInstance.post(
         `${baseUrl}/chat-messages`,
@@ -112,15 +103,14 @@ export class DifyService {
       );
 
       // 解析Dify对话API返回的数据
-      const answer = response.data?.answer || '您好，我正在为您分析问题...';
-      const metadata = response.data?.metadata || {};
-      
-      return {
-        initial_reply: answer,
-        suggested_options: metadata.suggested_options || ['转人工客服', '查看常见问题'],
-        detected_intent: metadata.detected_intent || 'unknown',
-        urgency: metadata.urgency === 'urgent' ? 'urgent' : 'non_urgent',
-      };
+      const parsed = this.parseResult(response.data);
+      if (!parsed.text) {
+        parsed.text = '您好，我正在为您分析问题...';
+      }
+      if (!parsed.suggestedOptions.length) {
+        parsed.suggestedOptions = ['转人工客服', '查看常见问题'];
+      }
+      return parsed;
     } catch (error: any) {
       throw error;
     }
@@ -136,7 +126,7 @@ export class DifyService {
     baseUrl: string,
     conversationId?: string,
     userId?: string,
-  ): Promise<DifyChatMessageResponse> {
+  ): Promise<DifyMessageResult> {
     try {
       const requestBody: any = {
         inputs: {},
@@ -161,12 +151,10 @@ export class DifyService {
         },
       );
 
-      return {
-        answer: response.data?.answer || '',
-        conversation_id: response.data?.conversation_id,
-        message_id: response.data?.id,
-        metadata: response.data?.metadata,
-      };
+      const parsed = this.parseResult(response.data);
+      parsed.conversationId =
+        response.data?.conversation_id ?? parsed.conversationId;
+      return parsed;
     } catch (error: any) {
       console.error('Dify发送对话消息失败:', error.message);
       throw new HttpException(
@@ -189,7 +177,7 @@ export class DifyService {
   ): Promise<string> {
     try {
       const query = `请优化以下客服回复内容，使其更加专业和友好：\n${content}\n\n上下文信息：\n${context}`;
-      
+
       const response = await this.sendChatMessage(
         query,
         apiKey,
@@ -198,7 +186,7 @@ export class DifyService {
         'system',
       );
 
-      return response.answer || content;
+      return response.text || content;
     } catch (error: any) {
       console.error('Dify优化回复失败:', error.message);
       return content; // 失败时返回原文
@@ -216,18 +204,15 @@ export class DifyService {
     limit: number = 20,
   ): Promise<any[]> {
     try {
-      const response = await this.axiosInstance.get(
-        `${baseUrl}/messages`,
-        {
-          params: {
-            conversation_id: conversationId,
-            limit,
-          },
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
+      const response = await this.axiosInstance.get(`${baseUrl}/messages`, {
+        params: {
+          conversation_id: conversationId,
+          limit,
         },
-      );
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
 
       return response.data?.data || [];
     } catch (error: any) {
@@ -265,5 +250,94 @@ export class DifyService {
       console.error('获取会话列表失败:', error.message);
       return [];
     }
+  }
+
+  private parseResult(payload: any): DifyMessageResult {
+    if (!payload || typeof payload !== 'object') {
+      return {
+        text: '',
+        suggestedOptions: [],
+        detectedIntent: 'unknown',
+        urgency: 'non_urgent',
+      };
+    }
+
+    const metadata = payload.metadata || payload.data?.metadata || {};
+    let text =
+      payload.text ||
+      payload.answer ||
+      payload.output ||
+      payload.initial_reply ||
+      metadata.text ||
+      payload.content ||
+      '';
+
+    // 处理 Dify 返回的 JSON 格式文本（包含 </think> 和 JSON）
+    if (typeof text === 'string' && text.includes('</think>')) {
+      // 提取 JSON 部分
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const jsonData = JSON.parse(jsonMatch[0]);
+          // 如果 JSON 中有 text 字段，使用它
+          if (jsonData.text) {
+            text = jsonData.text;
+          }
+          // 如果 JSON 中有 status，使用它
+          if (jsonData.status !== undefined) {
+            metadata.status = jsonData.status;
+          }
+        } catch (e) {
+          // JSON 解析失败，继续使用原始文本
+          console.warn('解析 Dify JSON 失败:', e);
+        }
+      }
+      // 移除 </think> 标记和 JSON 部分
+      text = text.replace(/<\/redacted_reasoning>[\s\S]*$/, '').trim();
+    }
+
+    // 尝试从文本中提取 JSON（如果整个文本是 JSON）
+    if (typeof text === 'string' && text.trim().startsWith('{') && text.trim().endsWith('}')) {
+      try {
+        const jsonData = JSON.parse(text);
+        if (jsonData.text) {
+          text = jsonData.text;
+        }
+        if (jsonData.status !== undefined) {
+          metadata.status = jsonData.status;
+        }
+      } catch (e) {
+        // 不是有效的 JSON，继续使用原始文本
+      }
+    }
+
+    const status =
+      payload.status ??
+      payload.state ??
+      payload.workflow_status ??
+      metadata.status ??
+      metadata.workflow_status;
+
+    const suggestedOptions =
+      payload.suggested_options ||
+      metadata.suggested_options ||
+      payload.options ||
+      [];
+
+    const detected_intent =
+      payload.detected_intent || metadata.detected_intent || 'unknown';
+
+    const urgencyValue =
+      payload.urgency || metadata.urgency || payload.priority || 'non_urgent';
+
+    return {
+      text,
+      status,
+      suggestedOptions: Array.isArray(suggestedOptions) ? suggestedOptions : [],
+      detectedIntent: detected_intent,
+      urgency: urgencyValue === 'urgent' ? 'urgent' : 'non_urgent',
+      metadata,
+      conversationId: payload.conversation_id,
+    };
   }
 }

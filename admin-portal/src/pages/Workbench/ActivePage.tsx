@@ -6,14 +6,13 @@ import {
   Tag,
   Space,
   Typography,
-  Badge,
   Empty,
   Spin,
-  message,
   Modal,
   Avatar,
   Input,
   Divider,
+  Image,
 } from 'antd';
 import {
   MessageOutlined,
@@ -24,21 +23,38 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getSessionMessages } from '../../services/message.service';
-import { closeSession } from '../../services/session.service';
+import {
+  closeSession,
+  getActiveSessions,
+  getSessionById,
+} from '../../services/session.service';
 import { useSessionStore } from '../../stores/sessionStore';
 import { websocketService } from '../../services/websocket.service';
 import type { Session } from '../../types';
 import './ActivePage.css';
+import { useMessage } from '../../hooks/useMessage';
+import { API_BASE_URL } from '../../config/api';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { confirm } = Modal;
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+
+const resolveMediaUrl = (url?: string) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_ORIGIN}${normalized}`;
+};
 
 const ActivePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const message = useMessage();
   
   const {
     activeSessions,
@@ -49,19 +65,17 @@ const ActivePage: React.FC = () => {
     setSessionMessages,
     updateSession,
   } = useSessionStore();
+  const ticketInfo = currentSession?.ticket;
+  const attachmentList = ticketInfo?.attachments ?? [];
 
-  // 模拟加载活跃会话（实际应该从API获取）
   const loadActiveSessions = async () => {
     setLoading(true);
     try {
-      // 这里应该调用API获取当前用户的活跃会话
-      // const sessions = await getActiveSessions();
-      // setActiveSessions(sessions);
-      
-      // 暂时使用空数组
-      setActiveSessions([]);
+      const sessions = await getActiveSessions();
+      setActiveSessions(sessions);
     } catch (error) {
       console.error('加载活跃会话失败:', error);
+      message.error('加载活跃会话失败');
     } finally {
       setLoading(false);
     }
@@ -69,6 +83,8 @@ const ActivePage: React.FC = () => {
 
   useEffect(() => {
     loadActiveSessions();
+    const interval = setInterval(loadActiveSessions, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // 打开聊天窗口
@@ -77,14 +93,18 @@ const ActivePage: React.FC = () => {
     setChatModalVisible(true);
     
     try {
-      // 加载会话消息
-      const messages = await getSessionMessages(session.id);
+      const [detail, messages] = await Promise.all([
+        getSessionById(session.id),
+        getSessionMessages(session.id),
+      ]);
+      setCurrentSession(detail);
       setSessionMessages(session.id, messages);
       
       // 加入WebSocket房间
       await websocketService.joinSession(session.id);
     } catch (error) {
       console.error('加载会话消息失败:', error);
+      message.error('加载会话信息失败');
     }
   };
 
@@ -157,30 +177,49 @@ const ActivePage: React.FC = () => {
     
     return (
       <div className="chat-messages">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`message-item ${
-              message.senderType === 'AGENT' ? 'message-agent' : 
-              message.senderType === 'PLAYER' ? 'message-player' : 
-              'message-system'
-            }`}
-          >
-            <div className="message-content">
-              <div className="message-header">
-                <span className="message-sender">
-                  {message.senderType === 'AGENT' ? '客服' : 
-                   message.senderType === 'PLAYER' ? '玩家' : 
-                   '系统'}
-                </span>
-                <span className="message-time">
-                  {dayjs(message.createdAt).format('HH:mm')}
-                </span>
+        {messages.map((message) => {
+          const isImageMessage = message.messageType === 'IMAGE';
+          const mediaUrl = isImageMessage ? resolveMediaUrl(message.content) : '';
+
+          return (
+            <div
+              key={message.id}
+              className={`message-item ${
+                message.senderType === 'AGENT'
+                  ? 'message-agent'
+                  : message.senderType === 'PLAYER'
+                  ? 'message-player'
+                  : 'message-system'
+              }`}
+            >
+              <div className="message-content">
+                <div className="message-header">
+                  <span className="message-sender">
+                    {message.senderType === 'AGENT'
+                      ? '客服'
+                      : message.senderType === 'PLAYER'
+                      ? '玩家'
+                      : '系统'}
+                  </span>
+                  <span className="message-time">
+                    {dayjs(message.createdAt).format('HH:mm')}
+                  </span>
+                </div>
+                {isImageMessage && mediaUrl ? (
+                  <Image
+                    src={mediaUrl}
+                    alt="玩家上传的图片"
+                    width={180}
+                    style={{ borderRadius: 8 }}
+                    placeholder
+                  />
+                ) : (
+                  <div className="message-text">{message.content}</div>
+                )}
               </div>
-              <div className="message-text">{message.content}</div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -200,7 +239,11 @@ const ActivePage: React.FC = () => {
         <div className="active-header">
           <Title level={3}>
             <MessageOutlined /> 活跃会话
-            <Badge count={activeSessions.length} style={{ marginLeft: 16 }} />
+            {activeSessions.length > 0 && (
+              <span style={{ marginLeft: 12, fontSize: 14, color: '#52c41a', fontWeight: 500 }}>
+                ({activeSessions.length})
+              </span>
+            )}
           </Title>
           
           <Button
@@ -305,13 +348,69 @@ const ActivePage: React.FC = () => {
           setCurrentSession(null);
         }}
         footer={null}
-        width={800}
-        className="chat-modal"
-      >
-        <div className="chat-container">
-          {renderMessages()}
-          
-          <Divider />
+      width={800}
+      className="chat-modal"
+    >
+      <div className="chat-container">
+        {ticketInfo && (
+          <div className="agent-ticket-info">
+            <div className="agent-ticket-grid">
+              <div>
+                <span className="label">游戏</span>
+                <p>{ticketInfo.game?.name || '-'}</p>
+              </div>
+              <div>
+                <span className="label">区服</span>
+                <p>{ticketInfo.server?.name || ticketInfo.serverName || '-'}</p>
+              </div>
+              <div>
+                <span className="label">玩家</span>
+                <p>{ticketInfo.playerIdOrName}</p>
+              </div>
+              <div>
+                <span className="label">问题发生时间</span>
+                <p>
+                  {ticketInfo.occurredAt
+                    ? dayjs(ticketInfo.occurredAt).format('YYYY-MM-DD HH:mm')
+                    : '-'}
+                </p>
+              </div>
+              <div>
+                <span className="label">反馈时间</span>
+                <p>{dayjs(ticketInfo.createdAt).format('YYYY-MM-DD HH:mm')}</p>
+              </div>
+            </div>
+            <div className="agent-ticket-problem">
+              <span className="label">问题</span>
+              <p>{ticketInfo.description}</p>
+            </div>
+            {attachmentList.length > 0 && (
+              <div className="agent-ticket-attachments">
+                <span className="label">截图</span>
+                <Image.PreviewGroup>
+                  <div className="agent-ticket-attachment-list">
+                    {attachmentList.map((file) => {
+                      const src = resolveMediaUrl(file.fileUrl);
+                      return (
+                        <Image
+                          key={file.id}
+                          src={src}
+                          alt={file.fileName}
+                          width={80}
+                          height={80}
+                          style={{ objectFit: 'cover', borderRadius: 8 }}
+                        />
+                      );
+                    })}
+                  </div>
+                </Image.PreviewGroup>
+              </div>
+            )}
+          </div>
+        )}
+        {renderMessages()}
+        
+        <Divider />
           
           <div className="chat-input">
             <TextArea

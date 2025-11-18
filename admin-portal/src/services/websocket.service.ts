@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { WS_URL } from '../config/api';
 import { message } from 'antd';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session, Message } from '../types';
@@ -13,7 +14,7 @@ class WebSocketService {
       return;
     }
 
-    this.socket = io('ws://localhost:3000', {
+    this.socket = io(WS_URL, {
       auth: {
         token: token
       },

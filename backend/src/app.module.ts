@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join, isAbsolute } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
@@ -15,15 +17,37 @@ import { SatisfactionModule } from './satisfaction/satisfaction.module';
 import { UploadModule } from './upload/upload.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TicketMessageModule } from './ticket-message/ticket-message.module';
+import { UserModule } from './user/user.module';
+import { IssueTypeModule } from './issue-type/issue-type.module';
+import { validate } from './common/config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
+      validate,
+    }),
+    ServeStaticModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const configuredDir =
+          configService.get<string>('UPLOAD_DIR') || 'uploads';
+        const rootPath = isAbsolute(configuredDir)
+          ? configuredDir
+          : join(process.cwd(), configuredDir);
+        return [
+          {
+            rootPath,
+            serveRoot: '/uploads',
+          },
+        ];
+      },
     }),
     AuthModule,
     GameModule,
+    IssueTypeModule,
     TicketModule,
     SessionModule,
     MessageModule,
@@ -34,6 +58,7 @@ import { TicketMessageModule } from './ticket-message/ticket-message.module';
     UploadModule,
     DashboardModule,
     TicketMessageModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

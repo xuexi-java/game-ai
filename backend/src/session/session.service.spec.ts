@@ -1,6 +1,6 @@
 /**
  * 会话服务单元测试
- * 
+ *
  * 测试覆盖：
  * - 创建会话和AI分流
  * - 客服接入会话
@@ -175,7 +175,9 @@ describe('SessionService', () => {
         ticketId: 'nonexistent',
       };
 
-      await expect(service.create(createSessionDto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(createSessionDto)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -209,7 +211,9 @@ describe('SessionService', () => {
     it('应该抛出异常当会话不存在', async () => {
       mockPrismaService.session.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -243,10 +247,7 @@ describe('SessionService', () => {
             },
           },
         },
-        orderBy: [
-          { priorityScore: 'desc' },
-          { queuedAt: 'asc' },
-        ],
+        orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
       });
     });
   });
@@ -388,4 +389,3 @@ describe('SessionService', () => {
     });
   });
 });
-

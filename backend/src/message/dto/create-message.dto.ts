@@ -20,4 +20,3 @@ export class CreateMessageDto {
   @IsOptional()
   messageType?: MessageType = MessageType.TEXT;
 }
-

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Form, Input, Button, Card, message, Typography, Divider, Space } from 'antd';
+import { Form, Input, Button, Card, Typography, Divider, Space } from 'antd';
 import { UserOutlined, LockOutlined, CustomerServiceOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { login, saveUserInfo } from '../../services/auth.service';
 import { useAuthStore } from '../../stores/authStore';
 import { websocketService } from '../../services/websocket.service';
 import type { LoginRequest } from '../../types';
+import { useMessage } from '../../hooks/useMessage';
 import './index.css';
 
 const { Title, Text } = Typography;
@@ -14,6 +15,7 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { setUser } = useAuthStore();
+  const message = useMessage();
 
   const handleLogin = async (values: LoginRequest) => {
     setLoading(true);
@@ -28,7 +30,8 @@ const LoginPage: React.FC = () => {
       websocketService.connect(response.accessToken);
       
       message.success('登录成功，欢迎使用AI客服管理系统！');
-      navigate('/dashboard');
+      const targetRoute = response.user.role === 'ADMIN' ? '/dashboard' : '/workbench/queue';
+      navigate(targetRoute);
     } catch (error) {
       console.error('登录失败:', error);
       message.error('登录失败，请检查用户名和密码');
@@ -111,13 +114,13 @@ const LoginPage: React.FC = () => {
                   <Text strong>管理员账号：</Text>
                   <Text code>admin</Text>
                   <Text> / </Text>
-                  <Text code>password123</Text>
+                  <Text code>admin123</Text>
                 </div>
                 <div className="demo-account">
                   <Text strong>客服账号：</Text>
-                  <Text code>agent</Text>
+                  <Text code>agent1</Text>
                   <Text> / </Text>
-                  <Text code>password123</Text>
+                  <Text code>agent123</Text>
                 </div>
               </Space>
             </div>

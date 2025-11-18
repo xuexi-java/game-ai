@@ -9,4 +9,3 @@ import { PrismaService } from '../prisma/prisma.service';
   exports: [UploadService],
 })
 export class UploadModule {}
-

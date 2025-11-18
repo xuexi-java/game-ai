@@ -56,32 +56,20 @@ async function main() {
   });
   console.log('✓ 创建游戏配置:', game1.name);
 
-  // 4. 为游戏创建示例区服
-  const server1 = await prisma.server.upsert({
-    where: { id: 'server-1' },
+  const game2 = await prisma.game.upsert({
+    where: { name: '神曲' },
     update: {},
     create: {
-      id: 'server-1',
-      gameId: game1.id,
-      name: '一区',
+      name: '神曲',
+      icon: null,
       enabled: true,
+      difyApiKey: 'your-dify-api-key-here', // 请替换为实际的API Key
+      difyBaseUrl: 'https://api.dify.ai/v1',
     },
   });
-  console.log('✓ 创建区服:', server1.name);
+  console.log('✓ 创建游戏配置:', game2.name);
 
-  const server2 = await prisma.server.upsert({
-    where: { id: 'server-2' },
-    update: {},
-    create: {
-      id: 'server-2',
-      gameId: game1.id,
-      name: '二区',
-      enabled: true,
-    },
-  });
-  console.log('✓ 创建区服:', server2.name);
-
-  // 5. 创建示例紧急排序规则
+  // 4. 创建示例紧急排序规则
   const rule1 = await prisma.urgencyRule.create({
     data: {
       name: '充值问题优先',

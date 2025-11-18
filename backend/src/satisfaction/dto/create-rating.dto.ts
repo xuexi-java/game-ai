@@ -1,4 +1,12 @@
-import { IsInt, IsNotEmpty, Min, Max, IsArray, IsString, IsOptional } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  Min,
+  Max,
+  IsArray,
+  IsString,
+  IsOptional,
+} from 'class-validator';
 
 export class CreateRatingDto {
   @IsString()
@@ -18,4 +26,3 @@ export class CreateRatingDto {
   @IsOptional()
   comment?: string;
 }
-

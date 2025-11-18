@@ -6,14 +6,14 @@ import { useParams } from 'react-router-dom';
 import { Input, Button, Typography, Spin } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { getTicketByToken } from '../../services/ticket.service';
-import type { Message } from '../../types';
+import type { Message, TicketDetail } from '../../types';
 import MessageList from '../../components/Chat/MessageList';
 
 const { TextArea } = Input;
 
 const TicketChatPage = () => {
   const { token } = useParams<{ token: string }>();
-  const [ticket, setTicket] = useState<any>(null);
+  const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);

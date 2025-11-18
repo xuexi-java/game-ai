@@ -10,8 +10,8 @@ import {
   Modal,
   Descriptions,
   Typography,
-  message,
   Tooltip,
+  Image,
 } from 'antd';
 import {
   SearchOutlined,
@@ -20,13 +20,73 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { getTickets, getTicketById, updateTicketStatus, updateTicketPriority } from '../../services/ticket.service';
+import {
+  getTickets,
+  getTicketById,
+  updateTicketStatus,
+  updateTicketPriority,
+} from '../../services/ticket.service';
 import { getGames } from '../../services/game.service';
 import type { Ticket, Game } from '../../types';
+import { useMessage } from '../../hooks/useMessage';
+import { useAuthStore } from '../../stores/authStore';
+import { API_BASE_URL } from '../../config/api';
 import './index.css';
 
 const { Option } = Select;
 const { Title } = Typography;
+
+type TicketStatus = Ticket['status'];
+type TicketPriority = Ticket['priority'];
+
+type StatusDisplay = { text: string; color: string };
+type PriorityDisplay = { text: string; color: string };
+
+const STATUS_OPTIONS: Array<{
+  value: TicketStatus;
+  text: string;
+  color: string;
+}> = [
+  { value: 'NEW', text: '新建', color: 'default' },
+  { value: 'IN_PROGRESS', text: '处理中', color: 'warning' },
+  { value: 'WAITING', text: '待人工', color: 'orange' },
+  { value: 'RESOLVED', text: '已解决', color: 'blue' },
+  { value: 'CLOSED', text: '已关闭', color: 'success' },
+];
+
+const PRIORITY_OPTIONS: Array<{
+  value: TicketPriority;
+  text: string;
+  color: string;
+}> = [
+  { value: 'LOW', text: '低', color: 'default' },
+  { value: 'NORMAL', text: '普通', color: 'blue' },
+  { value: 'HIGH', text: '高', color: 'orange' },
+  { value: 'URGENT', text: '紧急', color: 'red' },
+];
+
+const getStatusDisplay = (status?: string): StatusDisplay => {
+  const option = STATUS_OPTIONS.find((item) => item.value === status);
+  return option ?? { text: status || '未知状态', color: 'default' };
+};
+
+const getPriorityDisplay = (priority?: string): PriorityDisplay => {
+  const option = PRIORITY_OPTIONS.find((item) => item.value === priority);
+  return option ?? { text: priority || '未知优先级', color: 'default' };
+};
+
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+
+const resolveAttachmentUrl = (url?: string) => {
+  if (!url) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_ORIGIN}${normalized}`;
+};
 
 const TicketsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -37,6 +97,9 @@ const TicketsPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const message = useMessage();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
 
   // 筛选条件
   const [filters, setFilters] = useState({
@@ -45,20 +108,6 @@ const TicketsPage: React.FC = () => {
     gameId: '',
     search: '',
   });
-
-  // 状态映射
-  const statusMap = {
-    OPEN: { color: 'processing', text: '进行中' },
-    IN_PROGRESS: { color: 'warning', text: '处理中' },
-    CLOSED: { color: 'success', text: '已关闭' },
-  };
-
-  const priorityMap = {
-    LOW: { color: 'default', text: '低' },
-    MEDIUM: { color: 'blue', text: '中' },
-    HIGH: { color: 'orange', text: '高' },
-    URGENT: { color: 'red', text: '紧急' },
-  };
 
   // 加载数据
   const loadTickets = async () => {
@@ -69,13 +118,13 @@ const TicketsPage: React.FC = () => {
         pageSize,
         status: filters.status || undefined,
         priority: filters.priority || undefined,
-        gameId: filters.gameId || undefined,
+        gameId: isAdmin ? filters.gameId || undefined : undefined,
         sortBy: 'createdAt',
         sortOrder: 'desc',
       });
-      
-      setTickets(response.items);
-      setTotal(response.total);
+
+      setTickets(response?.items ?? []);
+      setTotal(response?.total ?? 0);
     } catch (error) {
       console.error('加载工单列表失败:', error);
     } finally {
@@ -85,6 +134,10 @@ const TicketsPage: React.FC = () => {
 
   // 加载游戏列表
   const loadGames = async () => {
+    if (!isAdmin) {
+      setGames([]);
+      return;
+    }
     try {
       const gamesData = await getGames();
       // 确保 gamesData 是数组
@@ -97,7 +150,10 @@ const TicketsPage: React.FC = () => {
 
   useEffect(() => {
     loadGames();
-  }, []);
+    if (!isAdmin && filters.gameId) {
+      setFilters((prev) => ({ ...prev, gameId: '' }));
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     loadTickets();
@@ -149,12 +205,16 @@ const TicketsPage: React.FC = () => {
         </Typography.Text>
       ),
     },
-    {
-      title: '游戏',
-      dataIndex: ['game', 'name'],
-      key: 'game',
-      width: 100,
-    },
+    ...(isAdmin
+      ? [
+          {
+            title: '游戏',
+            dataIndex: ['game', 'name'],
+            key: 'game',
+            width: 100,
+          },
+        ]
+      : []),
     {
       title: '区服',
       dataIndex: ['server', 'name'],
@@ -185,20 +245,20 @@ const TicketsPage: React.FC = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 110,
       render: (status, record) => (
-          <Select
-            value={status}
-            size="small"
-            style={{ width: '100%' }}
-            onChange={(value) => handleUpdateStatus(record.id, value)}
-          >
-            {Object.entries(statusMap).map(([key, info]) => (
-              <Option key={key} value={key}>
-                <Tag color={info.color}>{info.text}</Tag>
-              </Option>
-            ))}
-          </Select>
+        <Select
+          value={status}
+          size="small"
+          style={{ width: '100%' }}
+          onChange={(value) => handleUpdateStatus(record.id, value)}
+        >
+          {STATUS_OPTIONS.map(({ value, color, text }) => (
+            <Option key={value} value={value}>
+              <Tag color={color}>{text}</Tag>
+            </Option>
+          ))}
+        </Select>
       ),
     },
     {
@@ -213,9 +273,9 @@ const TicketsPage: React.FC = () => {
           style={{ width: '100%' }}
           onChange={(value) => handleUpdatePriority(record.id, value)}
         >
-          {Object.entries(priorityMap).map(([key, info]) => (
-            <Option key={key} value={key}>
-              <Tag color={info.color}>{info.text}</Tag>
+          {PRIORITY_OPTIONS.map(({ value, color, text }) => (
+            <Option key={value} value={value}>
+              <Tag color={color}>{text}</Tag>
             </Option>
           ))}
         </Select>
@@ -279,44 +339,51 @@ const TicketsPage: React.FC = () => {
                 allowClear
               />
               
-              <Select
-                placeholder="选择游戏"
-                value={filters.gameId}
-                onChange={(value) => setFilters({ ...filters, gameId: value })}
-                style={{ width: 150 }}
-                allowClear
-              >
-                {Array.isArray(games) && games.map(game => (
-                  <Option key={game.id} value={game.id}>
-                    {game.name}
-                  </Option>
-                ))}
-              </Select>
+              {isAdmin && (
+                <Select
+                  placeholder="选择游戏"
+                  value={filters.gameId}
+                  onChange={(value) => setFilters({ ...filters, gameId: value })}
+                  style={{ width: 150 }}
+                  allowClear
+                >
+                  {Array.isArray(games) &&
+                    games.map((game) => (
+                      <Option key={game.id} value={game.id}>
+                        {game.name}
+                      </Option>
+                    ))}
+                </Select>
+              )}
               
               <Select
                 placeholder="状态"
-                value={filters.status}
-                onChange={(value) => setFilters({ ...filters, status: value })}
-                style={{ width: 120 }}
+                value={filters.status || undefined}
+                onChange={(value) =>
+                  setFilters({ ...filters, status: value || '' })
+                }
+                style={{ width: 140 }}
                 allowClear
               >
-                {Object.entries(statusMap).map(([key, info]) => (
-                  <Option key={key} value={key}>
-                    {info.text}
+                {STATUS_OPTIONS.map(({ value, text }) => (
+                  <Option key={value} value={value}>
+                    {text}
                   </Option>
                 ))}
               </Select>
               
               <Select
                 placeholder="优先级"
-                value={filters.priority}
-                onChange={(value) => setFilters({ ...filters, priority: value })}
-                style={{ width: 120 }}
+                value={filters.priority || undefined}
+                onChange={(value) =>
+                  setFilters({ ...filters, priority: value || '' })
+                }
+                style={{ width: 140 }}
                 allowClear
               >
-                {Object.entries(priorityMap).map(([key, info]) => (
-                  <Option key={key} value={key}>
-                    {info.text}
+                {PRIORITY_OPTIONS.map(({ value, text }) => (
+                  <Option key={value} value={value}>
+                    {text}
                   </Option>
                 ))}
               </Select>
@@ -355,59 +422,85 @@ const TicketsPage: React.FC = () => {
         {selectedTicket && (
           <Descriptions column={2} bordered>
             <Descriptions.Item label="工单号" span={2}>
-              <Typography.Text copyable>
-                {selectedTicket.ticketNo}
-              </Typography.Text>
+              <Typography.Text copyable>{selectedTicket.ticketNo}</Typography.Text>
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="游戏">
-              {selectedTicket.game.name}
+              {selectedTicket.game?.name || '-'}
             </Descriptions.Item>
-            
             <Descriptions.Item label="区服">
-              {selectedTicket.server?.name || '-'}
+              {selectedTicket.server?.name || selectedTicket.serverName || '-'}
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="玩家ID/昵称">
               {selectedTicket.playerIdOrName}
             </Descriptions.Item>
-            
             <Descriptions.Item label="状态">
-              <Tag color={statusMap[selectedTicket.status as keyof typeof statusMap].color}>
-                {statusMap[selectedTicket.status as keyof typeof statusMap].text}
-              </Tag>
+              {(() => {
+                const info = getStatusDisplay(selectedTicket.status);
+                return <Tag color={info.color}>{info.text}</Tag>;
+              })()}
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="优先级">
-              <Tag color={priorityMap[selectedTicket.priority as keyof typeof priorityMap].color}>
-                {priorityMap[selectedTicket.priority as keyof typeof priorityMap].text}
-              </Tag>
+              {(() => {
+                const info = getPriorityDisplay(selectedTicket.priority);
+                return <Tag color={info.color}>{info.text}</Tag>;
+              })()}
             </Descriptions.Item>
-            
             <Descriptions.Item label="创建时间">
               {dayjs(selectedTicket.createdAt).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="更新时间">
               {dayjs(selectedTicket.updatedAt).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
-            
             <Descriptions.Item label="问题发生时间">
-              {selectedTicket.occurredAt 
+              {selectedTicket.occurredAt
                 ? dayjs(selectedTicket.occurredAt).format('YYYY-MM-DD HH:mm:ss')
-                : '-'
-              }
+                : '-'}
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="充值订单号">
               {selectedTicket.paymentOrderNo || '-'}
             </Descriptions.Item>
-            
+
             <Descriptions.Item label="问题描述" span={2}>
-            <div className="ticket-description">
-              {selectedTicket.description}
-            </div>
+              <div className="ticket-description">{selectedTicket.description}</div>
             </Descriptions.Item>
+
+            {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
+              <Descriptions.Item label="附件" span={2}>
+                <Image.PreviewGroup>
+                  <div className="ticket-attachments">
+                    {selectedTicket.attachments.map((attachment) => {
+                      const resolvedUrl = resolveAttachmentUrl(attachment.fileUrl);
+                      const isImage =
+                        attachment.fileType?.startsWith('image/') ||
+                        /\.(png|jpe?g|gif|webp)$/i.test(attachment.fileName || '');
+
+                      return (
+                        <div className="ticket-attachment-item" key={attachment.id}>
+                          {isImage ? (
+                            <Image
+                              width={96}
+                              height={96}
+                              src={resolvedUrl}
+                              alt={attachment.fileName}
+                              style={{ objectFit: 'cover', borderRadius: 8 }}
+                            />
+                          ) : (
+                            <a href={resolvedUrl} target="_blank" rel="noreferrer">
+                              {attachment.fileName}
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Image.PreviewGroup>
+              </Descriptions.Item>
+            )}
           </Descriptions>
         )}
       </Modal>

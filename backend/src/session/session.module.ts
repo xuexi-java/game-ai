@@ -4,12 +4,12 @@ import { SessionController } from './session.controller';
 import { PrismaService } from '../prisma/prisma.service';
 import { DifyModule } from '../dify/dify.module';
 import { MessageModule } from '../message/message.module';
+import { WebsocketModule } from '../websocket/websocket.module';
 
 @Module({
-  imports: [DifyModule, MessageModule],
+  imports: [DifyModule, MessageModule, WebsocketModule],
   controllers: [SessionController],
   providers: [SessionService, PrismaService],
   exports: [SessionService],
 })
 export class SessionModule {}
-

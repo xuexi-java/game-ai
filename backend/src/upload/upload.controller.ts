@@ -5,10 +5,14 @@ import {
   UploadedFile,
   Body,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UploadService } from './upload.service';
 import { Public } from '../common/decorators/public.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('upload')
@@ -20,45 +24,106 @@ export class UploadController {
 
   @Public()
   @Post('ticket-attachment')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+    }),
+  )
   async uploadTicketAttachment(
-    @UploadedFile() file: any,
-    @Body('ticketId') ticketId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('ticketId') ticketId?: string,
+    @Body('ticketToken') ticketToken?: string,
     @Body('sortOrder') sortOrder?: string,
   ) {
     if (!file) {
       throw new BadRequestException('请选择要上传的文件');
     }
 
-    if (!ticketId) {
-      throw new BadRequestException('工单ID不能为空');
+    if (!ticketId && !ticketToken) {
+      throw new BadRequestException('缺少工单信息');
     }
 
-    // 验证工单存在
-    const ticket = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-    });
+    type TicketLite = { id: string };
+    let ticket: TicketLite | null = null;
+
+    if (ticketId) {
+      ticket = await this.prisma.ticket.findUnique({
+        where: { id: ticketId },
+        select: { id: true },
+      });
+    }
+
+    if (!ticket && ticketToken) {
+      ticket = await this.prisma.ticket.findUnique({
+        where: { token: ticketToken },
+        select: { id: true },
+      });
+    }
 
     if (!ticket) {
       throw new BadRequestException('工单不存在');
     }
 
-    // 保存文件
-    const fileInfo = await this.uploadService.saveFile(file, ticketId);
+    const resolvedTicketId = ticket.id;
 
-    // 创建附件记录
+    const fileInfo = await this.uploadService.saveFile(file, resolvedTicketId);
+
     const attachment = await this.prisma.ticketAttachment.create({
       data: {
-        ticketId,
+        ticketId: resolvedTicketId,
         fileUrl: fileInfo.fileUrl,
         fileName: fileInfo.fileName,
         fileType: fileInfo.fileType,
         fileSize: fileInfo.fileSize,
-        sortOrder: sortOrder ? parseInt(sortOrder) : 0,
+        sortOrder: sortOrder ? parseInt(sortOrder, 10) : 0,
       },
     });
 
     return attachment;
   }
-}
 
+  // 上传用户头像
+  @Post('avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+    }),
+  )
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('请选择要上传的头像文件');
+    }
+
+    const fileInfo = await this.uploadService.saveAvatar(file, user.id);
+
+    // 更新用户头像
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { avatar: fileInfo.fileUrl },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        realName: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        isOnline: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      ...fileInfo,
+      user: updatedUser,
+    };
+  }
+}

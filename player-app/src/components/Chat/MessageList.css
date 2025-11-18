@@ -1,24 +1,25 @@
 .message-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 20px;
-    min-height: 100%;
+    gap: 14px;
+    padding: 24px 28px;
+    background: transparent;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
 .message-item {
     display: flex;
     width: 100%;
-    animation: fadeInUp 0.3s ease-out;
+    gap: 10px;
+    animation: fadeInUp 0.25s ease-out;
+    justify-content: flex-start;
+    align-items: flex-start;
 }
 
 .message-player {
     justify-content: flex-end;
-}
-
-.message-ai,
-.message-agent {
-    justify-content: flex-start;
+    flex-direction: row-reverse;
 }
 
 .message-system {
@@ -26,37 +27,32 @@
 }
 
 .message-bubble {
-    max-width: 75%;
+    max-width: 70%;
     padding: 14px 18px;
-    border-radius: 18px;
+    border-radius: 20px;
     word-wrap: break-word;
-    position: relative;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-}
-
-.message-bubble:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: #ffffff;
+    border: 1px solid rgba(15, 18, 34, 0.05);
+    box-shadow: 0 6px 18px rgba(15, 18, 34, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .message-player .message-bubble {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-bottom-right-radius: 6px;
+    background: linear-gradient(135deg, #54d1ff 0%, #3ab0ff 100%);
+    color: #fff;
+    align-self: flex-end;
+    margin-left: auto;
 }
 
-.message-ai .message-bubble {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    color: #333;
-    border-bottom-left-radius: 6px;
-    border: 1px solid #e9ecef;
-}
-
+.message-ai .message-bubble,
 .message-agent .message-bubble {
-    background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-    color: white;
-    border-bottom-left-radius: 6px;
+    background: #f7fbff;
+    border-color: transparent;
+    color: #1f2544;
+    align-self: flex-start;
+    margin-right: auto;
 }
 
 .message-system .message-bubble {
@@ -75,24 +71,29 @@
 
 .message-content {
     margin-bottom: 6px;
-    line-height: 1.5;
+    line-height: 1.6;
     font-size: 14px;
+    color: inherit;
 }
 
 .message-time {
     font-size: 11px;
-    color: rgba(0, 0, 0, 0.45);
-    margin-top: 6px;
+    color: rgba(15, 18, 34, 0.4);
+    margin-top: 4px;
     text-align: right;
 }
 
 .message-player .message-time {
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(255, 255, 255, 0.85);
+    text-align: right;
 }
 
 .message-ai .message-time,
 .message-agent .message-time {
     text-align: left;
+}
+.message-player {
+    text-align: right;
 }
 
 .suggested-options {
@@ -120,24 +121,38 @@
 
 /* 消息发送者标识 */
 
-.message-sender {
-    font-size: 11px;
-    color: rgba(0, 0, 0, 0.45);
-    margin-bottom: 4px;
-    font-weight: 500;
+.message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(15, 18, 34, 0.2);
 }
 
-.message-player .message-sender {
-    color: rgba(255, 255, 255, 0.8);
-    text-align: right;
+.avatar-ai {
+    background: linear-gradient(135deg, #87a7ff 0%, #6a7eff 100%);
 }
 
-.message-ai .message-sender::before {
-    content: "🤖 ";
+.avatar-agent {
+    background: linear-gradient(135deg, #ffafbd 0%, #ffc3a0 100%);
 }
 
-.message-agent .message-sender::before {
-    content: "👨‍💼 ";
+.avatar-player {
+    background: linear-gradient(135deg, #54d1ff 0%, #38bdf8 100%);
+}
+
+.message-player .message-avatar {
+    margin-left: 8px;
+}
+
+.message-ai .message-avatar,
+.message-agent .message-avatar {
+    margin-right: 8px;
 }
 
 

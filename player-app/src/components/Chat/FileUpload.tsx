@@ -2,9 +2,10 @@
  * 文件上传组件
  */
 import { useState } from 'react';
-import { Upload, Button, message, Modal } from 'antd';
+import { Upload, Button, Modal } from 'antd';
 import { PaperClipOutlined, FileImageOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
+import { useMessage } from '../../hooks/useMessage';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -20,6 +21,7 @@ const FileUpload = ({
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
   const [previewTitle, setPreviewTitle] = useState('');
+  const messageApi = useMessage();
 
   const beforeUpload: UploadProps['beforeUpload'] = (file) => {
     const isValidType = accept.split(',').some(type => 
@@ -27,13 +29,13 @@ const FileUpload = ({
     );
     
     if (!isValidType) {
-      message.error('文件格式不支持！');
+      messageApi.error('文件格式不支持！');
       return false;
     }
 
     const isValidSize = file.size / 1024 / 1024 < maxSize;
     if (!isValidSize) {
-      message.error(`文件大小不能超过 ${maxSize}MB！`);
+      messageApi.error(`文件大小不能超过 ${maxSize}MB！`);
       return false;
     }
 

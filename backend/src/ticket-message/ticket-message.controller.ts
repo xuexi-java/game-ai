@@ -27,4 +27,3 @@ export class TicketMessageController {
     return this.ticketMessageService.findByTicket(ticketId);
   }
 }
-

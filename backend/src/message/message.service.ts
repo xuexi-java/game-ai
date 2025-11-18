@@ -8,7 +8,11 @@ export class MessageService {
   constructor(private prisma: PrismaService) {}
 
   // 创建消息
-  async create(createMessageDto: CreateMessageDto, senderType: SenderType, senderId?: string) {
+  async create(
+    createMessageDto: CreateMessageDto,
+    senderType: SenderType,
+    senderId?: string,
+  ) {
     // 验证会话存在
     const session = await this.prisma.session.findUnique({
       where: { id: createMessageDto.sessionId },
@@ -24,7 +28,8 @@ export class MessageService {
         senderType,
         senderId: senderId || null,
         content: createMessageDto.content,
-        messageType: createMessageDto.messageType as MessageType || MessageType.TEXT,
+        messageType:
+          (createMessageDto.messageType as MessageType) || MessageType.TEXT,
       },
       include: {
         ...(senderType === 'AGENT' && senderId
@@ -98,4 +103,3 @@ export class MessageService {
     return this.create(createDto, 'SYSTEM');
   }
 }
-

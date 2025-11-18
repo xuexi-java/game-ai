@@ -7,19 +7,29 @@ export interface TicketState {
   // 步骤1：身份验证信息
   gameId: string | null;
   serverId: string | null;
+  serverName: string | null;
   playerIdOrName: string | null;
-  
+  issueTypeIds: string[]; // 新增：问题类型 IDs
+
   // 步骤3：工单信息
   ticketId: string | null;
   ticketNo: string | null;
   ticketToken: string | null;
-  
+
   // 设置身份信息
-  setIdentity: (gameId: string, serverId: string, playerIdOrName: string) => void;
-  
+  setIdentity: (payload: {
+    gameId: string;
+    playerIdOrName: string;
+    serverName?: string | null;
+    serverId?: string | null;
+  }) => void;
+
+  // 设置问题类型
+  setIssueTypes: (issueTypeIds: string[]) => void;
+
   // 设置工单信息
   setTicket: (ticketId: string, ticketNo: string, token: string) => void;
-  
+
   // 重置状态
   reset: () => void;
 }
@@ -27,24 +37,37 @@ export interface TicketState {
 export const useTicketStore = create<TicketState>((set) => ({
   gameId: null,
   serverId: null,
+  serverName: null,
   playerIdOrName: null,
+  issueTypeIds: [],
   ticketId: null,
   ticketNo: null,
   ticketToken: null,
-  
-  setIdentity: (gameId, serverId, playerIdOrName) => {
-    set({ gameId, serverId, playerIdOrName });
+
+  setIdentity: ({ gameId, playerIdOrName, serverName = null, serverId = null }) => {
+    set({
+      gameId,
+      serverId,
+      serverName,
+      playerIdOrName,
+    });
   },
-  
+
+  setIssueTypes: (issueTypeIds) => {
+    set({ issueTypeIds });
+  },
+
   setTicket: (ticketId, ticketNo, token) => {
     set({ ticketId, ticketNo, ticketToken: token });
   },
-  
+
   reset: () => {
     set({
       gameId: null,
       serverId: null,
+      serverName: null,
       playerIdOrName: null,
+      issueTypeIds: [],
       ticketId: null,
       ticketNo: null,
       ticketToken: null,

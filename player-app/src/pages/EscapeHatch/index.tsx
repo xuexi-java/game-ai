@@ -2,6 +2,7 @@
  * 步骤2：逃生舱页面
  */
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Card, Button, Space, Typography } from 'antd';
 import { useTicketStore } from '../../stores/ticketStore';
 
@@ -18,9 +19,13 @@ const EscapeHatchPage = () => {
     token: string;
   } | undefined;
 
+  useEffect(() => {
+    if (!ticket) {
+      navigate('/identity-check', { replace: true });
+    }
+  }, [ticket, navigate]);
+
   if (!ticket) {
-    // 如果没有工单信息，跳转到身份验证页面
-    navigate('/identity-check');
     return null;
   }
 

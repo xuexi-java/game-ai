@@ -69,7 +69,24 @@ git clone <repository-url>
 cd game-ai-cs
 ```
 
-### 2. 安装依赖
+### 2. 配置环境变量
+
+```bash
+# 复制环境变量示例文件
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp player-app/.env.example player-app/.env
+cp admin-portal/.env.example admin-portal/.env
+
+# 编辑 .env 文件，根据实际情况修改配置
+```
+
+⚠️ **重要**: 请确保修改以下配置：
+- `DATABASE_URL`: 数据库连接字符串
+- `JWT_SECRET`: JWT 密钥（生产环境必须修改）
+- `OSS_*`: 阿里云 OSS 配置（如果使用文件上传功能）
+
+### 3. 安装依赖
 
 ```bash
 # 安装根项目依赖
@@ -88,7 +105,7 @@ cd ../admin-portal
 npm install
 ```
 
-### 3. 启动数据库
+### 4. 启动数据库
 
 ```bash
 # 从项目根目录启动Docker服务
@@ -98,7 +115,7 @@ npm run docker:up
 docker-compose up -d
 ```
 
-### 4. 初始化数据库
+### 5. 初始化数据库
 
 ```bash
 # 从项目根目录
@@ -107,7 +124,7 @@ npm run db:migrate   # 运行数据库迁移
 npm run db:seed      # 初始化种子数据
 ```
 
-### 5. 启动开发服务
+### 6. 启动开发服务
 
 **后端服务**:
 ```bash

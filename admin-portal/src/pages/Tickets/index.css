@@ -77,6 +77,31 @@
     white-space: pre-wrap;
 }
 
+.ticket-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.ticket-attachment-item {
+    width: 96px;
+    height: 96px;
+    border: 1px solid #f0f0f0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #fafafa;
+}
+
+.ticket-attachment-item a {
+    display: inline-block;
+    padding: 4px;
+    text-align: center;
+    font-size: 12px;
+}
+
 
 /* 响应式设计 */
 

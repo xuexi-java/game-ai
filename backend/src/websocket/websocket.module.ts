@@ -25,4 +25,3 @@ import { MessageModule } from '../message/message.module';
   exports: [WebsocketGateway],
 })
 export class WebsocketModule {}
-
