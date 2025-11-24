@@ -47,11 +47,9 @@ const TicketChatPage = () => {
   // 获取工单状态显示文本
   const getStatusText = (status: string) => {
     const statusMap: Record<string, { text: string; color: string }> = {
-      NEW: { text: '待处理', color: 'blue' },
+      WAITING: { text: '待人工', color: 'orange' },
       IN_PROGRESS: { text: '处理中', color: 'processing' },
-      WAITING: { text: '等待回复', color: 'orange' },
       RESOLVED: { text: '已解决', color: 'success' },
-      CLOSED: { text: '已关闭', color: 'default' },
     };
     return statusMap[status] || { text: '未知', color: 'default' };
   };
@@ -174,6 +172,15 @@ const TicketChatPage = () => {
       setTicket((prev) => (prev ? { ...prev, ...data } : null));
     });
 
+    // 监听会话状态更新（如果工单关联了会话）
+    socket.on('session-update', (sessionData: any) => {
+      console.log('会话状态更新:', sessionData);
+      if (sessionData.status === 'CLOSED') {
+        antdMessage.info('会话已结束');
+        setTicket((prev) => (prev ? { ...prev, status: 'RESOLVED' } : null));
+      }
+    });
+
     return () => {
       console.log('清理 WebSocket 连接（工单）');
       if (socketRef.current) {
@@ -206,18 +213,16 @@ const TicketChatPage = () => {
         });
         
         if (response.ok) {
-          // 发送系统消息
-          const systemMessage: Message = {
-            id: `system-${Date.now()}`,
-            sessionId: ticket.id,
-            senderType: 'SYSTEM',
-            messageType: 'TEXT',
-            content: '玩家已离开',
-            createdAt: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, systemMessage]);
+          // 系统消息会通过 WebSocket 自动推送，不需要手动添加
           antdMessage.success('已退出会话');
+          // 更新工单状态为已解决
+          setTicket((prev) => (prev ? { ...prev, status: 'RESOLVED' } : null));
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          antdMessage.error(errorData.message || '退出会话失败');
         }
+      } else {
+        antdMessage.warning('未找到关联的会话');
       }
     } catch (error) {
       console.error('退出会话失败:', error);
@@ -304,7 +309,7 @@ const TicketChatPage = () => {
   }
 
   const statusInfo = getStatusText(ticket.status);
-  const isClosed = ticket.status === 'CLOSED';
+  const isResolved = ticket.status === 'RESOLVED';
 
   return (
     <div className="chat-container-v3">
@@ -358,9 +363,9 @@ const TicketChatPage = () => {
                 handleSend();
               }
             }}
-            placeholder={isClosed ? '工单已关闭，无法继续发送消息' : '输入消息...（Shift+Enter 换行）'}
+            placeholder={isResolved ? '工单已解决，无法继续发送消息' : '输入消息...（Shift+Enter 换行）'}
             autoSize={{ minRows: 1, maxRows: 4 }}
-            disabled={sending || isClosed}
+            disabled={sending || isResolved}
             className="chat-input-v3"
           />
           <Button
@@ -368,7 +373,7 @@ const TicketChatPage = () => {
             icon={<SendOutlined />}
             onClick={handleSend}
             loading={sending}
-            disabled={!inputValue.trim() || sending || isClosed}
+            disabled={!inputValue.trim() || sending || isResolved}
             className="send-btn-v3"
           />
         </div>

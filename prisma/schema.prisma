@@ -60,11 +60,9 @@ enum IdentityStatus {
 }
 
 enum TicketStatus {
-  NEW
   IN_PROGRESS
   WAITING
   RESOLVED
-  CLOSED
 }
 
 enum Priority {

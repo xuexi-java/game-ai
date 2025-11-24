@@ -16,7 +16,7 @@ import { MessageService } from '../message/message.service';
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin: ['http://localhost:20001', 'http://localhost:20002'],
     credentials: true,
   },
   namespace: '/',
@@ -143,7 +143,7 @@ export class WebsocketGateway
   // 管理端 - 客服发送消息
   @SubscribeMessage('agent:send-message')
   async handleAgentMessage(
-    @MessageBody() data: { sessionId: string; content: string },
+    @MessageBody() data: { sessionId: string; content: string; messageType?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -169,6 +169,7 @@ export class WebsocketGateway
         {
           sessionId: data.sessionId,
           content: data.content,
+          messageType: data.messageType as any || 'TEXT',
         },
         'AGENT',
         clientInfo.userId,
@@ -310,5 +311,16 @@ export class WebsocketGateway
   notifyTicketMessage(ticketId: string, message: any) {
     // 通知所有连接到该工单的客户端（通过 ticketId 房间）
     this.server.to(`ticket:${ticketId}`).emit('ticket-message', message);
+  }
+
+  // 通知工单状态更新
+  notifyTicketUpdate(ticketId: string, data: any) {
+    // 通知所有连接到该工单的客户端
+    this.server.to(`ticket:${ticketId}`).emit('ticket-update', data);
+    // 同时通知管理端（工单列表可能需要更新）
+    this.server.emit('ticket-status-changed', {
+      ticketId,
+      ...data,
+    });
   }
 }

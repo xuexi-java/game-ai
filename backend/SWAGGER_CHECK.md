@@ -39,7 +39,7 @@
 ## Swagger 配置
 
 ### 文档地址
-- Swagger UI: `http://localhost:3000/api/v1/docs`
+- Swagger UI: `http://localhost:21001/api/v1/docs`
 
 ### 配置项
 - ✅ JWT Bearer 认证已配置

@@ -2,13 +2,20 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
+import { TicketService } from '../ticket/ticket.service';
 
 @Injectable()
 export class SatisfactionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => TicketService))
+    private ticketService: TicketService,
+  ) {}
 
   // 创建满意度评价
   async create(createRatingDto: CreateRatingDto) {
@@ -35,7 +42,7 @@ export class SatisfactionService {
       throw new BadRequestException('该会话已评价');
     }
 
-    return this.prisma.satisfactionRating.create({
+    const rating = await this.prisma.satisfactionRating.create({
       data: {
         sessionId: createRatingDto.sessionId,
         ticketId: session.ticketId,
@@ -45,6 +52,13 @@ export class SatisfactionService {
         comment: createRatingDto.comment || null,
       },
     });
+
+    // 检查并更新关联工单的状态
+    if (session.ticketId) {
+      await this.ticketService.checkAndUpdateTicketStatus(session.ticketId);
+    }
+
+    return rating;
   }
 
   // 获取会话的评价

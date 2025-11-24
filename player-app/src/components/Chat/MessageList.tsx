@@ -6,7 +6,19 @@ import dayjs from 'dayjs';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RobotOutlined, UserOutlined, CustomerServiceOutlined, LoadingOutlined } from '@ant-design/icons';
+import { API_BASE_URL } from '../../config/api';
 import './MessageList.css';
+
+// 解析媒体URL（图片等）
+const resolveMediaUrl = (url?: string) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${apiOrigin}${normalized}`;
+};
 
 type UploadStatus = 'UPLOADING' | 'FAILED';
 
@@ -89,6 +101,7 @@ const MessageList = ({ messages, aiTyping = false, onRetryUpload }: MessageListP
             key={message.id}
             className={`message-item-v3 ${isPlayer ? 'message-player-v3' : isAI ? 'message-ai-v3' : 'message-agent-v3'}`}
           >
+            {/* 玩家端：只显示对方的头像（AI和客服），不显示自己的头像 */}
             {!isPlayer && (
               <div className={`message-avatar-v3 ${isAI ? 'avatar-ai-v3' : 'avatar-agent-v3'}`}>
                 {isAI ? <RobotOutlined /> : <CustomerServiceOutlined />}
@@ -108,9 +121,14 @@ const MessageList = ({ messages, aiTyping = false, onRetryUpload }: MessageListP
               >
                 {message.messageType === 'IMAGE' ? (
                   <img
-                    src={message.content}
+                    src={resolveMediaUrl(message.content)}
                     alt="图片消息"
                     className="message-image-v3"
+                    onError={(e) => {
+                      console.error('图片加载失败:', message.content);
+                      // 如果图片加载失败，可以显示占位符
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
                   />
                 ) : (
                   <div className="message-text-v3">
@@ -145,11 +163,7 @@ const MessageList = ({ messages, aiTyping = false, onRetryUpload }: MessageListP
                 </div>
               )}
             </div>
-            {isPlayer && (
-              <div className="message-avatar-v3 avatar-player-v3">
-                <UserOutlined />
-              </div>
-            )}
+            {/* 玩家消息不显示头像 */}
           </div>
         );
       })}

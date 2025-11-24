@@ -6,6 +6,7 @@ import { websocketService } from '../services/websocket.service';
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  isAuthReady: boolean;
   setUser: (user: User | null) => void;
   logout: () => void;
   initAuth: () => void;
@@ -14,10 +15,12 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
+  isAuthReady: false,
   
   setUser: (user) => set({ 
     user, 
-    isAuthenticated: !!user 
+    isAuthenticated: !!user,
+    isAuthReady: true,
   }),
   
   logout: () => {
@@ -26,16 +29,29 @@ export const useAuthStore = create<AuthState>((set) => ({
       clearUserInfo();
       set({ 
         user: null, 
-        isAuthenticated: false 
+        isAuthenticated: false,
+        isAuthReady: true,
       });
     });
   },
   
   initAuth: () => {
     const user = getCurrentUser();
-    set({ 
-      user, 
-      isAuthenticated: !!user 
-    });
+    const token = localStorage.getItem('admin_token');
+    
+    if (user && token) {
+      set({ 
+        user, 
+        isAuthenticated: true,
+        isAuthReady: true,
+      });
+      websocketService.connect(token);
+    } else {
+      set({ 
+        user: null, 
+        isAuthenticated: false,
+        isAuthReady: true,
+      });
+    }
   },
 }));

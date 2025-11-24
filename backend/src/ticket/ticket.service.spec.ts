@@ -43,7 +43,7 @@ describe('TicketService', () => {
       const mockTicket = {
         id: '1',
         ticketNo: 'T-20240101-001',
-        status: 'NEW',
+        status: 'IN_PROGRESS',
         token: 'token-1',
       };
 
@@ -98,7 +98,7 @@ describe('TicketService', () => {
         ticketNo: 'T-20240101-001',
         token: 'mock-token',
         ...createTicketDto,
-        status: 'NEW',
+        status: 'IN_PROGRESS',
         identityStatus: 'NOT_VERIFIED',
       };
 
@@ -126,7 +126,7 @@ describe('TicketService', () => {
         ticketNo: 'T-20240101-001',
         token: 'mock-token',
         ...createTicketDto,
-        status: 'NEW',
+        status: 'IN_PROGRESS',
         identityStatus: 'NOT_VERIFIED',
       };
 
@@ -230,7 +230,7 @@ describe('TicketService', () => {
     it('应该成功更新工单状态', async () => {
       const existingTicket = {
         id: '1',
-        status: 'NEW',
+        status: 'IN_PROGRESS',
         deletedAt: null,
       };
 
@@ -276,7 +276,7 @@ describe('TicketService', () => {
         {
           id: '1',
           ticketNo: 'T-20240101-001',
-          status: 'NEW',
+          status: 'IN_PROGRESS',
           game: { id: 'game1', name: '游戏1' },
           server: { id: 'server1', name: '区服1' },
         },
@@ -304,7 +304,7 @@ describe('TicketService', () => {
         {
           id: '1',
           ticketNo: 'T-20240101-001',
-          status: 'NEW',
+          status: 'IN_PROGRESS',
         },
       ];
 
@@ -312,7 +312,7 @@ describe('TicketService', () => {
       mockPrismaService.ticket.count.mockResolvedValue(1);
 
       const result = await service.findAll({
-        status: 'NEW',
+        status: 'WAITING',
         page: 1,
         pageSize: 10,
       });
@@ -320,7 +320,7 @@ describe('TicketService', () => {
       expect(mockPrismaService.ticket.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            status: 'NEW',
+            status: 'WAITING',
           }),
         }),
       );

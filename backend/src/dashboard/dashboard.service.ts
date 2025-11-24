@@ -76,19 +76,19 @@ export class DashboardService {
       this.prisma.ticket.count({
         where: {
           ...ticketWhere,
-          status: { not: 'CLOSED' },
+          status: { not: 'RESOLVED' },
         },
       }),
       this.prisma.ticket.count({
         where: {
           ...ticketWhere,
-          status: 'CLOSED',
+          status: 'RESOLVED',
         },
       }),
       this.prisma.ticket.findMany({
         where: {
           ...ticketWhere,
-          status: { in: ['RESOLVED', 'CLOSED'] },
+          status: 'RESOLVED',
           closedAt: { not: null },
         },
         select: {
@@ -229,7 +229,7 @@ export class DashboardService {
         };
       }
       dailyMap[key].tickets += 1;
-      if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
+      if (ticket.status === 'RESOLVED') {
         dailyMap[key].resolved += 1;
       }
     });

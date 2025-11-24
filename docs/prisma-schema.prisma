@@ -60,11 +60,9 @@ enum IdentityStatus {
 }
 
 enum TicketStatus {
-  NEW
   IN_PROGRESS
   WAITING
   RESOLVED
-  CLOSED
 }
 
 enum Priority {
@@ -85,7 +83,7 @@ model Ticket {
   occurredAt      DateTime?
   paymentOrderNo  String?
   identityStatus  IdentityStatus @default(NOT_VERIFIED)
-  status          TicketStatus   @default(NEW)
+  status          TicketStatus   @default(IN_PROGRESS)
   priority        Priority       @default(NORMAL)
   token           String         @unique
   createdAt       DateTime       @default(now())

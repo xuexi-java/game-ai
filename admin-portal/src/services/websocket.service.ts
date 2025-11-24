@@ -101,6 +101,12 @@ class WebSocketService {
       console.log('会话状态更新:', data);
       const { updateSession } = useSessionStore.getState();
       updateSession(data.sessionId, data);
+      
+      // 如果会话已关闭，刷新会话列表
+      if (data.status === 'CLOSED') {
+        // 触发会话列表刷新（通过事件或直接调用）
+        window.dispatchEvent(new CustomEvent('session-closed', { detail: data.sessionId }));
+      }
     });
 
     // 接收消息
@@ -157,7 +163,7 @@ class WebSocketService {
   }
 
   // 客服发送消息
-  sendAgentMessage(sessionId: string, content: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  sendAgentMessage(sessionId: string, content: string, messageType: 'TEXT' | 'IMAGE' = 'TEXT'): Promise<{ success: boolean; messageId?: string; error?: string }> {
     return new Promise((resolve) => {
       if (!this.socket?.connected) {
         resolve({ success: false, error: '连接已断开' });
@@ -165,7 +171,7 @@ class WebSocketService {
       }
 
       this.socket.emit('agent:send-message', 
-        { sessionId, content },
+        { sessionId, content, messageType },
         (response: { success: boolean; messageId?: string; error?: string }) => {
           resolve(response);
         }

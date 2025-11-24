@@ -173,8 +173,8 @@ export class TicketController {
         gameId: query.gameId,
         page: query.page ? parseInt(query.page) : 1,
         pageSize: query.pageSize ? parseInt(query.pageSize) : 10,
-        sortBy: query.sortBy || 'createdAt',
-        sortOrder: query.sortOrder || 'desc',
+        sortBy: query.sortBy,
+        sortOrder: query.sortOrder,
       },
       user,
     );
@@ -204,7 +204,7 @@ export class TicketController {
     schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['NEW', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'] },
+        status: { type: 'string', enum: ['IN_PROGRESS', 'WAITING', 'RESOLVED'] },
       },
       required: ['status'],
     },
@@ -233,5 +233,18 @@ export class TicketController {
   @ApiResponse({ status: 200, description: '更新成功' })
   updatePriority(@Param('id') id: string, @Body() body: { priority: string }) {
     return this.ticketService.updatePriority(id, body.priority);
+  }
+
+  // 管理端API - 手动标记工单为已处理
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT')
+  @Patch(':id/resolve')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: '手动标记工单为已处理（管理端）' })
+  @ApiParam({ name: 'id', description: '工单ID' })
+  @ApiResponse({ status: 200, description: '标记成功' })
+  @ApiResponse({ status: 404, description: '工单不存在' })
+  markAsResolved(@Param('id') id: string) {
+    return this.ticketService.markAsResolved(id);
   }
 }

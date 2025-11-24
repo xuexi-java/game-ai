@@ -61,6 +61,8 @@ export interface Session {
   aiUrgency?: 'URGENT' | 'NON_URGENT';
   priorityScore?: number;
   queuedAt?: string;
+  queuePosition?: number | null;
+  estimatedWaitTime?: number | null;
   agentId?: string;
   difyStatus?: string | null;
   allowManualTransfer?: boolean;
@@ -68,12 +70,7 @@ export interface Session {
   messages?: Message[];
 }
 
-export type TicketStatus =
-  | 'NEW'
-  | 'IN_PROGRESS'
-  | 'WAITING'
-  | 'RESOLVED'
-  | 'CLOSED';
+export type TicketStatus = 'IN_PROGRESS' | 'WAITING' | 'RESOLVED';
 
 export interface TicketDetail {
   id: string;

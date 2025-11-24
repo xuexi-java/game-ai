@@ -42,7 +42,7 @@ const ChatPage = () => {
   // 移除转人工弹窗相关状态
   const [wsConnected, setWsConnected] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
-  const { session, messages, setSession, addMessage, removeMessage, updateSession } =
+  const { session, messages, setSession, addMessage, updateSession } =
     useSessionStore();
   const messageApi = useMessage();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -89,7 +89,7 @@ const ChatPage = () => {
     socket.on('connect', () => {
       console.log('WebSocket 连接成功');
       setWsConnected(true);
-      socket.emit('join-session', sessionId);
+      socket.emit('join-session', { sessionId });
     });
 
     socket.on('connect_error', (error) => {
@@ -116,9 +116,18 @@ const ChatPage = () => {
     socket.on('session-update', (sessionData) => {
       console.log('会话更新:', sessionData);
       updateSession(sessionData);
-      if (sessionData.status === 'QUEUED') {
-        navigate(`/queue/${sessionId}`);
+      // 当客服接入时，停止AI对话，切换到人工客服模式
+      if (sessionData.status === 'IN_PROGRESS' && sessionData.agentId) {
+        // 客服已接入，禁用AI对话
+        setAiTyping(false);
+        messageApi.success('客服已接入，现在可以与客服直接对话');
       }
+      // 当会话关闭时，提示用户
+      if (sessionData.status === 'CLOSED') {
+        setAiTyping(false);
+        messageApi.info('会话已结束');
+      }
+      // 不跳转页面，保持在聊天界面显示排队状态
     });
 
     socket.on('error', (error) => {
@@ -146,31 +155,35 @@ const ChatPage = () => {
     setSending(true);
 
     try {
-      // 先添加玩家消息到界面（乐观更新）
-      const playerMessage = {
-        id: `temp-${Date.now()}`,
-        sessionId,
-        senderType: 'PLAYER' as const,
-        messageType: 'TEXT' as const,
-        content,
-        createdAt: new Date().toISOString(),
-      };
-      addMessage(playerMessage);
-
-      // 设置AI正在回复状态
+      // 设置AI正在回复状态（仅在AI模式下，客服接入后不显示AI正在回复）
+      const isAgentJoined = session?.status === 'IN_PROGRESS' && session?.agentId;
+      if (!isAgentJoined) {
       setAiTyping(true);
+      }
 
+      // 发送消息（后端会根据会话状态决定是否触发AI回复）
       const response = await sendPlayerMessage(sessionId, content);
-
-      // 移除临时消息
-      removeMessage(playerMessage.id);
 
       if (response?.playerMessage) {
         addMessage(response.playerMessage);
+      } else {
+        // 兜底：后端未返回消息时，也保证界面能显示玩家发送的内容
+        addMessage({
+          id: `local-${Date.now()}`,
+          sessionId,
+          senderType: 'PLAYER',
+          messageType: 'TEXT',
+          content,
+          createdAt: new Date().toISOString(),
+        });
       }
-      if (response?.aiMessage) {
+      
+      // 如果客服已接入，不会收到AI回复
+      if (response?.aiMessage && !isAgentJoined) {
         addMessage(response.aiMessage);
-        // AI回复后清除正在回复状态
+        setAiTyping(false);
+      } else if (isAgentJoined) {
+        // 客服已接入，消息已发送给客服，清除AI状态
         setAiTyping(false);
       } else {
         // 如果没有立即收到AI回复，等待WebSocket消息
@@ -183,7 +196,6 @@ const ChatPage = () => {
     } catch (error) {
       console.error('发送消息失败:', error);
       messageApi.error('发送消息失败');
-      removeMessage(playerMessage.id);
       setAiTyping(false);
     } finally {
       setSending(false);
@@ -282,11 +294,14 @@ const ChatPage = () => {
         updateSession({ 
           status: 'QUEUED',
           allowManualTransfer: false,
+          queuePosition: result.queuePosition ?? queuePosition ?? null,
+          estimatedWaitTime: result.estimatedWaitTime ?? estimatedWait ?? null,
+          queuedAt: new Date().toISOString(),
         });
-        // 延迟一下再跳转，确保状态更新
-        setTimeout(() => {
-          navigate(`/queue/${sessionId}`);
-        }, 500);
+        setQueuePosition(result.queuePosition ?? queuePosition ?? null);
+        setEstimatedWait(result.estimatedWaitTime ?? estimatedWait ?? null);
+        // 不跳转页面，在聊天界面显示排队状态
+        // 玩家可以继续查看聊天历史，等待客服接入
       } else {
         messageApi.info(result.message || '您的问题已升级为加急工单');
         // 即使没有排队，也更新会话状态
@@ -294,8 +309,12 @@ const ChatPage = () => {
           updateSession({ 
             status: 'CLOSED',
             allowManualTransfer: false,
+            queuePosition: null,
+            estimatedWaitTime: null,
           });
         }
+        setQueuePosition(null);
+        setEstimatedWait(null);
       }
     } catch (error: any) {
       console.error('转人工失败:', error);
@@ -353,6 +372,7 @@ const ChatPage = () => {
   // 移除 handleSubmitTransferForm，不再需要表单提交
 
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [estimatedWait, setEstimatedWait] = useState<number | null>(null);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
@@ -368,36 +388,56 @@ const ChatPage = () => {
   const isQueued = session?.status === 'QUEUED';
   const issueTypeOptions = session?.ticket?.issueTypes || [];
 
-  // 处理转人工后的排队逻辑
+  // 根据最新会话信息同步排队状态
   useEffect(() => {
-    if (isQueued && session?.queuedAt) {
-      // 模拟排队位置（实际应从后端获取）
-      setQueuePosition(3);
+    if (session?.queuePosition !== undefined) {
+      setQueuePosition(
+        session.queuePosition === null || session.queuePosition === undefined
+          ? null
+          : session.queuePosition
+      );
+    }
+    if (session?.estimatedWaitTime !== undefined) {
+      setEstimatedWait(
+        session.estimatedWaitTime === null || session.estimatedWaitTime === undefined
+          ? null
+          : session.estimatedWaitTime
+      );
+    }
+  }, [session?.queuePosition, session?.estimatedWaitTime]);
+
+  // 处理转人工后的排队逻辑（无后端排队数据时启用本地模拟）
+  useEffect(() => {
+    const shouldSimulate =
+      isQueued &&
+      session?.queuedAt &&
+      (session.queuePosition === undefined || session.queuePosition === null);
+
+    if (shouldSimulate) {
+      setQueuePosition((prev) => prev ?? 3);
       queueIntervalRef.current = setInterval(() => {
         setQueuePosition((prev) => {
           if (prev === null || prev <= 1) {
             if (queueIntervalRef.current) {
               clearInterval(queueIntervalRef.current);
             }
-            return 0;
+            return 1;
           }
           return prev - 1;
         });
-      }, 2000);
-    } else {
-      if (queueIntervalRef.current) {
-        clearInterval(queueIntervalRef.current);
-        queueIntervalRef.current = null;
-      }
-      setQueuePosition(null);
+      }, 5000);
+    } else if (queueIntervalRef.current) {
+      clearInterval(queueIntervalRef.current);
+      queueIntervalRef.current = null;
     }
 
     return () => {
       if (queueIntervalRef.current) {
         clearInterval(queueIntervalRef.current);
+        queueIntervalRef.current = null;
       }
     };
-  }, [isQueued, session?.queuedAt]);
+  }, [isQueued, session?.queuedAt, session?.queuePosition]);
 
   const handleCloseChat = async () => {
     if (!sessionId) return;
@@ -473,6 +513,13 @@ const ChatPage = () => {
     }
   }, [hasExtraQuickActions, showAllQuickActions]);
 
+  const displayQueuePositionValue =
+    queuePosition ?? session?.queuePosition ?? null;
+  const displayEstimatedWaitValue =
+    estimatedWait ??
+    session?.estimatedWaitTime ??
+    (displayQueuePositionValue ? Math.max(displayQueuePositionValue * 3, 3) : null);
+
   const enhancedMessages = useMemo(() => {
     const pendingMessages = pendingUploads.map((upload) => ({
       id: upload.id,
@@ -489,21 +536,32 @@ const ChatPage = () => {
     }));
 
     const queueMessages =
-      isQueued && queuePosition !== null
+      isQueued && displayQueuePositionValue !== null
         ? [
             {
-              id: `queue-info-${queuePosition}`,
+              id: `queue-info-${displayQueuePositionValue}`,
               sessionId: sessionId || 'queue',
               senderType: 'SYSTEM' as const,
               messageType: 'SYSTEM_NOTICE' as const,
-              content: `已为您排队，当前位于第 ${queuePosition} 位，请耐心等待。`,
+              content: `已为您排队，当前位于第 ${displayQueuePositionValue} 位${
+                displayEstimatedWaitValue
+                  ? `，预计等待约 ${Math.max(displayEstimatedWaitValue, 1)} 分钟`
+                  : ''
+              }。请保持在线，客服稍后将接入。`,
               createdAt: new Date().toISOString(),
             },
           ]
         : [];
 
     return [...messages, ...pendingMessages, ...queueMessages];
-  }, [messages, pendingUploads, isQueued, queuePosition, sessionId]);
+  }, [
+    messages,
+    pendingUploads,
+    isQueued,
+    displayQueuePositionValue,
+    displayEstimatedWaitValue,
+    sessionId,
+  ]);
 
   // 滚动到底部（考虑本地占位消息）
   useEffect(() => {
@@ -565,13 +623,18 @@ const ChatPage = () => {
         </header>
 
         {/* Queue Banner */}
-        {isQueued && queuePosition !== null && (
+        {isQueued && displayQueuePositionValue !== null && (
           <div className="queue-banner-v3">
             <div className="queue-banner-content">
               <Spin size="small" />
-              <span>正在转接人工客服...</span>
+              <span>正在为您转接人工客服...</span>
             </div>
-            <span className="queue-position">第 {queuePosition} 位</span>
+            <span className="queue-position">
+              第 {displayQueuePositionValue} 位
+              {displayEstimatedWaitValue
+                ? ` · 预计 ${Math.max(displayEstimatedWaitValue, 1)} 分钟`
+                : ''}
+            </span>
           </div>
         )}
 

@@ -130,12 +130,22 @@
 }
 
 .session-group {
-  flex: 0 0 50%;
+  flex: 0 0 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.session-group:not(.collapsed) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.session-group.collapsed {
+  flex: 0 0 auto;
 }
 
 .group-header {
@@ -149,6 +159,36 @@
   z-index: 10;
   border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.group-header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.group-subtitle {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 400;
+}
+
+.collapse-icon {
+  color: #8c8c8c;
+  transition: transform 0.2s ease;
+}
+
+.collapse-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.session-group.collapsed .session-group-content {
+  display: none;
 }
 
 .session-group-content {
@@ -225,6 +265,19 @@
 .session-extra {
   font-size: 12px;
   color: #8c8c8c;
+  margin-top: 4px;
+}
+
+.session-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.session-assigned-hint {
+  font-size: 12px;
+  color: #bfbfbf;
 }
 
 .session-card-content {
@@ -235,6 +288,7 @@
 .session-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   padding-top: 8px;
   border-top: 1px solid #f0f0f0;
   margin-top: 8px;
@@ -253,7 +307,87 @@
   position: relative;
   margin: 0 16px;
   resize: horizontal;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  align-items: stretch;
+}
+
+.chat-panel-spin {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  flex-shrink: 1;
+  background: #fff;
+}
+
+.chat-panel-spin .ant-spin-nested-loading,
+.chat-panel-spin .ant-spin-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  height: 100%;
+  background: #fff;
+}
+
+/* 完全移除 Spin 组件的遮罩层和模糊效果 */
+.chat-panel-spin .ant-spin-blur {
+  background: transparent !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+
+.chat-panel-spin .ant-spin-blur::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+}
+
+.chat-panel-spin .ant-spin-container {
+  background: transparent !important;
+}
+
+.chat-panel-spin .ant-spin-nested-loading > div > .ant-spin {
+  max-height: none !important;
+}
+
+.chat-panel-spin .ant-spin-nested-loading {
+  background: transparent !important;
+}
+
+.chat-panel-spin .ant-spin {
+  background: transparent !important;
+}
+
+.chat-panel-spin .ant-spin-mask {
+  display: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.chat-panel-spin .ant-spin-spinning {
+  position: relative !important;
+}
+
+.chat-panel-spin .ant-spin-spinning .ant-spin-blur {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+.chat-panel-body {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
 }
 
 .workbench-chat-panel::before {
@@ -292,6 +426,7 @@
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  background: #fff;
 }
 
 .chat-context {
@@ -301,8 +436,10 @@
 }
 
 .chat-history {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   background: #ededed;
 }
@@ -323,17 +460,15 @@
 }
 
 .message-player-wechat {
-  flex-direction: row-reverse;
-  justify-content: flex-end;
-}
-
-.message-ai-wechat {
+  flex-direction: row;
   justify-content: flex-start;
 }
 
+.message-ai-wechat,
 .message-agent-wechat {
   flex-direction: row-reverse;
   justify-content: flex-end;
+  width: 100%;
 }
 
 /* 头像 */
@@ -370,16 +505,22 @@
   flex-direction: column;
   gap: 4px;
   max-width: 70%;
-  flex: 1;
+  flex: 0 1 auto;
 }
 
 .message-player-wechat .message-content-wrapper-wechat {
-  align-items: flex-end;
+  align-items: flex-start;
+  margin-right: auto;
+  margin-left: 0;
 }
 
 .message-ai-wechat .message-content-wrapper-wechat,
 .message-agent-wechat .message-content-wrapper-wechat {
   align-items: flex-end;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  width: fit-content;
+  max-width: 70%;
 }
 
 /* 发送者名称 */
@@ -416,14 +557,14 @@
   border-bottom-left-radius: 8px;
 }
 
-/* AI消息气泡 - 左侧，类似微信白色 */
+/* AI消息气泡 - 右侧，类似微信白色 */
 .bubble-ai-wechat {
   background: #ffffff;
   color: #1f2937;
-  border-top-left-radius: 4px;
-  border-bottom-left-radius: 4px;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
   border: 1px solid #e5e5e5;
 }
 
@@ -451,6 +592,20 @@
   margin-top: 2px;
 }
 
+/* 图片消息样式 */
+.message-bubble-wechat .ant-image {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.message-bubble-wechat .ant-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  cursor: pointer;
+}
+
 .bubble-player-wechat .message-time-wechat {
   color: rgba(0, 0, 0, 0.5);
 }
@@ -463,44 +618,81 @@
 }
 
 .chat-input-bar {
-  padding: 16px;
+  padding: 8px 16px 8px 16px !important;
   border-top: 1px solid #f0f0f0;
   background: #fff;
-  flex-shrink: 0;
+  flex: 0 0 auto !important;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  position: relative;
+  z-index: 100;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 !important;
+  margin-top: auto !important;
+  align-self: flex-end;
 }
 
-.chat-input-bar .ant-input {
+.workbench-chat-panel > .chat-input-bar {
+  margin-bottom: 0 !important;
+  padding-bottom: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.chat-input-bar .ant-input,
+.chat-input-bar .ant-input-affix-wrapper {
   resize: vertical;
-  min-height: 60px;
-  max-height: 300px;
+  max-height: 120px !important;
+  min-height: 32px !important;
+  height: auto !important;
+}
+
+.chat-input-bar .ant-input,
+.chat-input-bar textarea,
+.chat-input-bar .ant-input-affix-wrapper textarea {
+  line-height: 1.4 !important;
+  padding: 6px 12px !important;
+  font-size: 14px !important;
+  min-height: 32px !important;
+  max-height: 120px !important;
 }
 
 .input-toolbar {
   display: flex;
   gap: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  margin-top: 0;
 }
 
 .chat-actions {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  margin-top: 12px;
+  margin-top: 8px;
+  margin-bottom: 0;
+  padding: 0;
+  gap: 8px;
 }
 
 .ai-optimize-btn {
-  border-color: #722ed1;
-  color: #722ed1;
-  background: rgba(114, 46, 209, 0.05);
+  border-color: #722ed1 !important;
+  color: #722ed1 !important;
+  background: rgba(114, 46, 209, 0.1) !important;
+  font-weight: 500 !important;
+  border-width: 1.5px !important;
 }
 
-.ai-optimize-btn:hover,
-.ai-optimize-btn:focus {
-  border-color: #531dab;
-  color: #531dab;
+.ai-optimize-btn:hover:not(:disabled),
+.ai-optimize-btn:focus:not(:disabled) {
+  border-color: #531dab !important;
+  color: #531dab !important;
+  background: rgba(114, 46, 209, 0.15) !important;
+}
+
+.ai-optimize-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 右侧信息面板 - 可调整宽度 */

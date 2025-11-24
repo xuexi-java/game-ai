@@ -10,7 +10,7 @@ echo ================================================================
 echo.
 
 REM 检查 Node.js
-echo [1/5] 检查 Node.js 环境...
+echo [1/6] 检查 Node.js 环境...
 where node >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未找到 Node.js，请先安装 Node.js
@@ -21,7 +21,7 @@ for /f "tokens=*" %%i in ('node --version 2^>nul') do set NODE_VERSION=%%i
 echo [成功] Node.js 已安装 ^(版本: %NODE_VERSION%^)
 
 REM 检查 npm
-echo [2/5] 检查 npm 环境...
+echo [2/6] 检查 npm 环境...
 where npm >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未找到 npm，请先安装 npm
@@ -32,7 +32,7 @@ for /f "tokens=*" %%i in ('npm --version 2^>nul') do set NPM_VERSION=%%i
 echo [成功] npm 已安装 ^(版本: %NPM_VERSION%^)
 
 REM 检查 Docker
-echo [3/5] 检查 Docker 环境...
+echo [3/6] 检查 Docker 环境...
 where docker >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未找到 Docker，请先安装 Docker Desktop
@@ -90,7 +90,7 @@ if errorlevel 1 (
 echo [成功] Docker 正在运行
 
 REM 启动 Docker 服务
-echo [4/5] 启动 Docker 服务 ^(PostgreSQL 和 Redis^)...
+echo [4/6] 启动 Docker 服务 ^(PostgreSQL^)...
 docker-compose up -d
 if errorlevel 1 (
     echo [错误] Docker 服务启动失败
@@ -120,8 +120,30 @@ if !DB_READY! equ 1 (
 REM 创建日志目录
 if not exist "logs" mkdir logs
 
+REM 检查并清理端口 21001
+echo [5/6] 检查端口占用情况...
+netstat -ano | findstr ":21001" | findstr "LISTENING" >nul 2>&1
+if not errorlevel 1 (
+    echo [警告] 端口 21001 已被占用，正在尝试关闭占用进程...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":21001" ^| findstr "LISTENING"') do (
+        set "PID=%%a"
+        if defined PID (
+            echo 正在关闭进程 PID: !PID!
+            taskkill /F /PID !PID! >nul 2>&1
+            if not errorlevel 1 (
+                echo [成功] 已关闭占用端口的进程 ^(PID: !PID!^)
+            ) else (
+                echo [警告] 无法关闭进程 PID: !PID!，可能需要管理员权限
+            )
+        )
+    )
+    timeout /t 2 /nobreak >nul
+) else (
+    echo [成功] 端口 21001 可用
+)
+
 REM 启动后端服务
-echo [5/5] 启动后端服务...
+echo [6/6] 启动后端服务...
 cd /d "%~dp0backend"
 start /b cmd /c "npm run start:dev > ..\logs\backend.log 2> ..\logs\backend-error.log"
 cd /d "%~dp0"
@@ -150,10 +172,10 @@ echo        服务启动完成！
 echo ================================================================
 echo.
 echo 服务访问地址：
-echo   - 后端服务:    http://localhost:3000
-echo   - 管理端:      http://localhost:5174
-echo   - 玩家端:      http://localhost:5173
-echo   - API 文档:    http://localhost:3000/api/v1/docs
+echo   - 后端服务:    http://localhost:21001
+echo   - 管理端:      http://localhost:20001
+echo   - 玩家端:      http://localhost:20002
+echo   - API 文档:    http://localhost:21001/api/v1/docs
 echo.
 echo 日志文件位于 'logs' 文件夹
 echo.

@@ -8,9 +8,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isAuthReady } = useAuthStore();
   const fallbackRoute =
     user?.role === 'ADMIN' ? '/dashboard' : '/workbench/active';
+
+  if (!isAuthReady) {
+    return <div style={{ padding: 40, textAlign: 'center' }}>正在加载...</div>;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

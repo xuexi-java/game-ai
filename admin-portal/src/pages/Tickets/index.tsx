@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -50,11 +50,9 @@ const STATUS_OPTIONS: Array<{
   text: string;
   color: string;
 }> = [
-  { value: 'NEW', text: '新建', color: 'default' },
-  { value: 'IN_PROGRESS', text: '处理中', color: 'warning' },
   { value: 'WAITING', text: '待人工', color: 'orange' },
+  { value: 'IN_PROGRESS', text: '处理中', color: 'warning' },
   { value: 'RESOLVED', text: '已解决', color: 'blue' },
-  { value: 'CLOSED', text: '已关闭', color: 'success' },
 ];
 
 const PRIORITY_OPTIONS: Array<{
@@ -76,6 +74,12 @@ const getStatusDisplay = (status?: string): StatusDisplay => {
 const getPriorityDisplay = (priority?: string): PriorityDisplay => {
   const option = PRIORITY_OPTIONS.find((item) => item.value === priority);
   return option ?? { text: priority || '未知优先级', color: 'default' };
+};
+
+const STATUS_ORDER: Record<TicketStatus, number> = {
+  WAITING: 0,
+  IN_PROGRESS: 1,
+  RESOLVED: 2,
 };
 
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
@@ -127,8 +131,7 @@ const TicketsPage: React.FC = () => {
         status: filters.status || undefined,
         issueTypeId: filters.issueTypeId || undefined,
         gameId: isAdmin ? filters.gameId || undefined : undefined,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
+        // 不传递 sortBy 和 sortOrder，使用后端默认排序（按问题类型权重分数降序，相同分数按创建时间升序）
       });
 
       // 转换后端返回的数据格式，将 ticketIssueTypes 转换为 issueTypes
@@ -289,6 +292,10 @@ const TicketsPage: React.FC = () => {
 
   // 打开手动分配弹窗（支持多次分配）
   const handleOpenAssignModal = (ticket: Ticket) => {
+    if (ticket.status === 'RESOLVED') {
+      message.warning('已解决的工单无法分配客服');
+      return;
+    }
     // 获取工单的最新会话
     const latestSession = ticket.sessions && ticket.sessions.length > 0 
       ? ticket.sessions[0] 
@@ -413,6 +420,7 @@ const TicketsPage: React.FC = () => {
           ? record.sessions[0] 
           : null;
         const hasSession = latestSession !== null;
+        const isResolved = record.status === 'RESOLVED';
         const isAssigned = latestSession?.agentId && latestSession?.status === 'IN_PROGRESS';
         
         return (
@@ -429,6 +437,7 @@ const TicketsPage: React.FC = () => {
               <Button
                 type="link"
                 size="small"
+                disabled={isResolved}
                 onClick={() => handleOpenAssignModal(record)}
               >
                 {isAssigned ? '重新分配' : '分配客服'}
@@ -453,6 +462,24 @@ const TicketsPage: React.FC = () => {
       setPageSize(size || 10);
     },
   };
+
+  const sortedTickets = useMemo(() => {
+    return [...tickets].sort((a, b) => {
+      const statusDiff =
+        (STATUS_ORDER[a.status as TicketStatus] ?? 99) -
+        (STATUS_ORDER[b.status as TicketStatus] ?? 99);
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+
+      const scoreDiff = (b.priorityScore ?? 0) - (a.priorityScore ?? 0);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf();
+    });
+  }, [tickets]);
 
   return (
     <div className="tickets-container">
@@ -548,7 +575,7 @@ const TicketsPage: React.FC = () => {
         {/* 工单表格 */}
         <Table
           columns={columns}
-          dataSource={tickets}
+          dataSource={sortedTickets}
           rowKey="id"
           loading={loading}
           pagination={paginationConfig}

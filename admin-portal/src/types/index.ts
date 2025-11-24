@@ -57,7 +57,7 @@ export interface Server {
 export interface Ticket {
   id: string;
   ticketNo: string;
-  status: 'NEW' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+  status: 'IN_PROGRESS' | 'WAITING' | 'RESOLVED';
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   game: Game;
   server?: Server;
@@ -100,6 +100,7 @@ export interface Session {
   priorityScore?: number;
   queuedAt?: string;
   queuePosition?: number;
+  estimatedWaitTime?: number | null;
   transferAt?: string;
   transferReason?: string;
   transferIssueTypeId?: string;

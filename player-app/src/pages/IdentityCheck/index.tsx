@@ -126,23 +126,14 @@ const IdentityCheckPage = () => {
       });
 
       if (result.hasOpenTicket && result.ticket) {
-        // 询问玩家是否继续上次的工单
-        Modal.confirm({
-          title: '检测到未完成的工单',
-          content: `您有一个相同问题类型的未完成工单（${result.ticket.ticketNo}），是否继续处理该工单？`,
-          okText: '继续处理',
-          cancelText: '创建新工单',
-          onOk: () => {
-            navigate('/escape-hatch', {
-              state: {
-                ticket: result.ticket,
-              },
-            });
-          },
-          onCancel: () => {
-            navigate('/intake-form');
-          },
-        });
+        // 直接跳转到工单聊天页面，不再显示 EscapeHatch 页面
+        // 保存工单信息到 store（如果需要）
+        const ticketStore = useTicketStore.getState();
+        if (ticketStore.setTicket && result.ticket.token) {
+          ticketStore.setTicket(result.ticket.id, result.ticket.ticketNo, result.ticket.token);
+        }
+        // 直接跳转到工单聊天页面
+        navigate(`/ticket/${result.ticket.token}`);
         return;
       }
 

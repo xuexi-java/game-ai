@@ -137,7 +137,7 @@ npm run db:seed      # 初始化种子数据
 启动脚本会自动执行以下步骤：
 1. ✅ 检查 Node.js 和 npm 环境
 2. ✅ 检查 Docker 环境，如果 Docker Desktop 未运行会自动启动
-3. ✅ 启动 Docker 服务 (PostgreSQL & Redis)
+3. ✅ 启动 Docker 服务 (PostgreSQL)
 4. ✅ 等待数据库就绪
 5. ✅ 启动后端服务（在独立窗口）
 6. ✅ 启动管理端前端（在独立窗口）
@@ -145,7 +145,7 @@ npm run db:seed      # 初始化种子数据
 8. ✅ 显示服务访问地址
 
 **启动顺序**：
-- 首先启动 Docker 服务（PostgreSQL 和 Redis）
+- 首先启动 Docker 服务（仅 PostgreSQL）
 - 然后启动后端服务（等待 3 秒）
 - 接着启动管理端前端（等待 2 秒）
 - 最后启动玩家端前端（等待 2 秒）
@@ -174,21 +174,21 @@ npm run db:seed      # 初始化种子数据
 cd backend
 npm run start:dev
 ```
-后端服务运行在: http://localhost:3000
+后端服务运行在: http://localhost:21001
 
 **玩家端**:
 ```bash
 
 npm run dev
 ```
-玩家端运行在: http://localhost:5173
+玩家端运行在: http://localhost:20002
 
 **管理端**:
 ```bash
 cd admin-portal
 npm run dev
 ```
-管理端运行在: http://localhost:5174 (需要配置不同端口)
+管理端运行在: http://localhost:20001
 
 ## 📚 开发命令
 
@@ -288,27 +288,26 @@ npm run preview       # 预览生产构建
 ### 后端 (.env)
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/game_ai_cs?schema=public"
+DATABASE_URL="postgresql://postgres:postgres@localhost:22001/game_ai_cs?schema=public"
 JWT_SECRET="your-secret-key"
 JWT_EXPIRES_IN="8h"
-REDIS_URL="redis://localhost:6379"
-PORT=3000
+PORT=21001
 NODE_ENV="development"
-FRONTEND_URL="http://localhost:5173"
+FRONTEND_URL="http://localhost:20001,http://localhost:20002"
 ```
 
 ### 玩家端 (.env)
 
 ```env
-VITE_API_BASE_URL=http://localhost:3000/api/v1
-VITE_WS_URL=ws://localhost:3000
+VITE_API_BASE_URL=http://localhost:21001/api/v1
+VITE_WS_URL=ws://localhost:21001
 ```
 
 ### 管理端 (.env)
 
 ```env
-VITE_API_BASE_URL=http://localhost:3000/api/v1
-VITE_WS_URL=ws://localhost:3000
+VITE_API_BASE_URL=http://localhost:21001/api/v1
+VITE_WS_URL=ws://localhost:21001
 ```
 
 ## 🗄️ 数据库结构

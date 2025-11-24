@@ -39,12 +39,12 @@ export class IssueTypeController {
     return this.issueTypeService.findEnabled();
   }
 
-  // 获取所有问题类型（管理端）
+  // 获取所有问题类型（管理端和客服端）
   @Get('all')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: '获取所有问题类型（管理端）' })
+  @ApiOperation({ summary: '获取所有问题类型（管理端和客服端）' })
   @ApiResponse({ status: 200, description: '返回问题类型列表' })
   findAll() {
     return this.issueTypeService.findAll();

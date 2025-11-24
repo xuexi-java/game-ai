@@ -45,7 +45,7 @@ export class TicketService {
       playerIdOrName,
       deletedAt: null,
       status: {
-        not: 'CLOSED',
+        not: 'RESOLVED',
       },
     };
 
@@ -84,7 +84,7 @@ export class TicketService {
       playerIdOrName,
       deletedAt: null,
       status: {
-        not: 'CLOSED',
+        not: 'RESOLVED',
       },
       ticketIssueTypes: {
         some: {
@@ -458,9 +458,15 @@ export class TicketService {
             take: 1, // 只取最新的会话
           },
         },
-        orderBy: {
-          [query.sortBy || 'createdAt']: query.sortOrder || 'desc',
-        },
+        orderBy: query.sortBy
+          ? {
+              [query.sortBy]: query.sortOrder || 'desc',
+            }
+          : [
+              // 默认排序：先按问题类型权重分数降序，相同分数按创建时间升序
+              { priorityScore: 'desc' },
+              { createdAt: 'asc' },
+            ],
         skip,
         take: pageSize,
       }),
@@ -474,5 +480,161 @@ export class TicketService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  /**
+   * 检查并更新工单状态
+   * 当工单的所有会话都已关闭时，将工单状态更新为 RESOLVED
+   */
+  async checkAndUpdateTicketStatus(ticketId: string): Promise<void> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        sessions: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      return;
+    }
+
+    // 如果工单已经是 RESOLVED 或 CLOSED，不需要更新
+    if (ticket.status === 'RESOLVED') {
+      return;
+    }
+
+    // 检查是否所有会话都已关闭
+    const allSessionsClosed =
+      ticket.sessions.length > 0 &&
+      ticket.sessions.every((session) => session.status === 'CLOSED');
+
+    if (allSessionsClosed) {
+      await this.prisma.ticket.update({
+        where: { id: ticketId },
+        data: {
+          status: 'RESOLVED',
+          closedAt: new Date(),
+        },
+      });
+
+      // 通知 WebSocket 客户端工单状态更新
+      try {
+        this.websocketGateway.notifyTicketUpdate(ticketId, {
+          status: 'RESOLVED',
+          closedAt: new Date(),
+        });
+      } catch (error) {
+        // WebSocket 通知失败不影响状态更新
+        console.warn('WebSocket 通知失败:', error);
+      }
+    }
+  }
+
+  /**
+   * 手动标记工单为已处理
+   */
+  async markAsResolved(ticketId: string): Promise<void> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('工单不存在');
+    }
+
+    if (ticket.status === 'RESOLVED') {
+      return;
+    }
+
+    await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: 'RESOLVED',
+        closedAt: new Date(),
+      },
+    });
+
+    // 通知 WebSocket 客户端工单状态更新
+    this.websocketGateway.notifyTicketUpdate(ticketId, {
+      status: 'RESOLVED',
+      closedAt: new Date(),
+    });
+  }
+
+  /**
+   * 定时任务：检查超过3天没有更新状态的工单
+   * 如果工单的所有会话都已关闭超过3天，自动更新为 RESOLVED
+   */
+  async checkStaleTickets(): Promise<void> {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+    // 查找所有状态为 IN_PROGRESS 或 WAITING，且所有会话都已关闭的工单
+    const staleTickets = await this.prisma.ticket.findMany({
+      where: {
+        status: {
+          in: ['IN_PROGRESS', 'WAITING'],
+        },
+        updatedAt: {
+          lt: threeDaysAgo,
+        },
+        sessions: {
+          every: {
+            status: 'CLOSED',
+          },
+        },
+      },
+      include: {
+        sessions: {
+          select: {
+            id: true,
+            status: true,
+            closedAt: true,
+          },
+        },
+      },
+    });
+
+    // 进一步检查：确保所有会话的关闭时间都在3天前
+    const ticketsToUpdate = staleTickets.filter((ticket) => {
+      if (ticket.sessions.length === 0) {
+        return false; // 没有会话的工单不处理
+      }
+
+      const allClosedBeforeThreeDays = ticket.sessions.every((session) => {
+        return session.status === 'CLOSED' && session.closedAt && session.closedAt < threeDaysAgo;
+      });
+
+      return allClosedBeforeThreeDays;
+    });
+
+    // 批量更新工单状态
+    for (const ticket of ticketsToUpdate) {
+      await this.prisma.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: 'RESOLVED',
+          closedAt: new Date(),
+        },
+      });
+
+      // 通知 WebSocket 客户端工单状态更新
+      try {
+        this.websocketGateway.notifyTicketUpdate(ticket.id, {
+          status: 'RESOLVED',
+          closedAt: new Date(),
+        });
+      } catch (error) {
+        // WebSocket 通知失败不影响状态更新
+        console.warn('WebSocket 通知失败:', error);
+      }
+    }
+
+    console.log(`定时任务：已更新 ${ticketsToUpdate.length} 个超过3天的工单状态`);
   }
 }

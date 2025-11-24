@@ -9,11 +9,14 @@ import {
   MessageType as PrismaMessageType,
   SessionStatus,
   Urgency,
+  Prisma,
 } from '@prisma/client';
 import { MessageType as MessageDtoType } from '../message/dto/create-message.dto';
 import { DifyService, DifyMessageResult } from '../dify/dify.service';
 import { MessageService } from '../message/message.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { Inject, forwardRef } from '@nestjs/common';
+import { TicketService } from '../ticket/ticket.service';
 
 const TICKET_RELATION_INCLUDE = {
   game: true,
@@ -38,6 +41,8 @@ export class SessionService {
     private difyService: DifyService,
     private messageService: MessageService,
     private websocketGateway: WebsocketGateway,
+    @Inject(forwardRef(() => TicketService))
+    private ticketService: TicketService,
   ) {}
 
   private enrichTicketWithIssueTypes<T extends { ticketIssueTypes?: any[] }>(
@@ -176,6 +181,15 @@ export class SessionService {
       'PLAYER',
     );
     this.websocketGateway.notifyMessage(sessionId, playerMessage);
+
+    // 如果会话已被客服接入，不触发AI回复，只保存玩家消息
+    if (session.status === 'IN_PROGRESS' && session.agentId) {
+      return {
+        playerMessage,
+        aiMessage: null,
+        difyStatus: null,
+      };
+    }
 
     let difyResult: DifyMessageResult | null = null;
     let aiMessage: Awaited<
@@ -492,6 +506,11 @@ export class SessionService {
   async assignSession(sessionId: string, agentId: string) {
     const session = await this.findOne(sessionId);
     
+    // 如果所属工单已解决或关闭，禁止分配
+    if (session.ticket?.status === 'RESOLVED' || session.ticket?.status === 'CLOSED') {
+      throw new BadRequestException('该工单已解决，无法再次分配客服');
+    }
+    
     // 检查用户是否存在（可以是客服或管理员）
     const agent = await this.prisma.user.findUnique({
       where: { id: agentId, deletedAt: null },
@@ -557,46 +576,73 @@ export class SessionService {
       return session;
     }
 
-    // 获取所有在线客服和管理员及其当前接待的会话数量
-    const onlineAgents = await this.prisma.user.findMany({
-      where: {
-        role: { in: ['AGENT', 'ADMIN'] },
-        isOnline: true,
-        deletedAt: null,
-      },
-      include: {
-        sessions: {
-          where: {
-            status: 'IN_PROGRESS',
-            agentId: { not: null },
-          },
+    const baseAgentWhere = {
+      role: 'AGENT' as const,
+      deletedAt: null,
+    };
+
+    const agentInclude: Prisma.UserInclude = {
+      sessions: {
+        where: {
+          status: SessionStatus.IN_PROGRESS,
+          agentId: { not: null },
         },
       },
+    };
+
+    const agents = await this.prisma.user.findMany({
+      where: baseAgentWhere,
+      include: agentInclude,
     });
 
-    if (onlineAgents.length === 0) {
-      throw new BadRequestException('当前没有在线客服');
+    const onlineAgents = agents.filter((agent) => agent.isOnline);
+    const candidateAgents = (onlineAgents.length > 0 ? onlineAgents : agents).filter(
+      (agent) => agent.deletedAt === null,
+    );
+
+    const allAgentsBusy =
+      candidateAgents.length > 0 && candidateAgents.every((agent) => agent.sessions.length > 0);
+
+    let candidatePool = [...candidateAgents];
+
+    if (candidatePool.length === 0 || allAgentsBusy) {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          role: 'ADMIN',
+          deletedAt: null,
+        },
+        include: agentInclude,
+      });
+      if (admins.length > 0) {
+        const onlineAdmins = admins.filter((admin) => admin.isOnline);
+        const adminPool = onlineAdmins.length > 0 ? onlineAdmins : admins;
+        candidatePool =
+          candidatePool.length > 0 ? [...candidatePool, ...adminPool] : [...adminPool];
+      }
     }
 
-    // 按当前接待数量排序，选择接待数量最少的客服
-    const agentsWithLoad = onlineAgents.map((agent) => ({
+    if (candidatePool.length === 0) {
+      throw new BadRequestException('当前没有可分配的客服，请稍后重试');
+    }
+
+    const agentsWithLoad = candidatePool.map((agent) => ({
       agent,
       load: agent.sessions.length,
     }));
 
-    // 按负载排序，选择负载最少的客服
     agentsWithLoad.sort((a, b) => a.load - b.load);
     const selectedAgent = agentsWithLoad[0].agent;
 
-    // 分配给选中的客服（自动分配，不标记为手动分配）
+    const shouldRemainQueued = session.status === 'QUEUED';
+
     const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
         agentId: selectedAgent.id,
-        status: 'IN_PROGRESS',
-        startedAt: session.startedAt || new Date(),
-        queuedAt: null, // 清除排队状态
-        manuallyAssigned: false, // 自动分配，保持 false
+        status: shouldRemainQueued ? 'QUEUED' : 'IN_PROGRESS',
+        startedAt: shouldRemainQueued ? session.startedAt : session.startedAt || new Date(),
+        queuedAt: shouldRemainQueued ? session.queuedAt ?? new Date() : null,
+        manuallyAssigned: false,
       },
       include: {
         ticket: {
@@ -617,11 +663,16 @@ export class SessionService {
       },
     });
 
+    if (!selectedAgent.isOnline) {
+      await this.prisma.user.update({
+        where: { id: selectedAgent.id },
+        data: { isOnline: true },
+      });
+    }
+
     const normalizedSession = this.enrichSession(updatedSession);
 
-    // 通知 WebSocket 客户端
     this.websocketGateway.notifySessionUpdate(sessionId, normalizedSession);
-
     return normalizedSession;
   }
 
@@ -637,16 +688,9 @@ export class SessionService {
       },
     });
 
-    // 如果没有在线客服，不进入队列，直接提示玩家
-    if (onlineAgents === 0) {
-      return {
-        queued: false,
-        message: '当前没有客服在线，请在客服上班时间（9:30-12:30，14:00-18:30）内咨询',
-        onlineAgents: 0,
-      };
-    }
-
     const priorityScore = await this.calculatePriorityScore(sessionId);
+
+    const noAgentsOnline = onlineAgents === 0;
 
     // 先更新会话状态为排队
     const session = await this.prisma.session.update({
@@ -667,30 +711,43 @@ export class SessionService {
     // 重新排序队列
     await this.reorderQueue();
 
-    // 尝试自动分配（如果未手动分配过）
-    try {
-      // 自动分配给负载最少的客服
-      await this.autoAssignSession(sessionId);
-    } catch (error) {
-      // 如果自动分配失败（例如没有在线客服），保持排队状态
-      console.error('自动分配失败，保持排队状态:', error);
+    if (!noAgentsOnline) {
+      // 尝试自动分配（如果未手动分配过）
+      try {
+        await this.autoAssignSession(sessionId);
+      } catch (error) {
+        console.error('自动分配失败，保持排队状态:', error);
+      }
+    } else {
+      // 所有客服离线，推送系统消息提示玩家
+      await this.messageService.createSystemMessage(
+        sessionId,
+        '当前暂无客服在线，我们已记录您的问题，客服上线后会第一时间处理，请稍候。',
+      );
     }
 
-    // 重新获取会话状态（可能已经被自动分配）
     const updatedSession = await this.findOne(sessionId);
     this.websocketGateway.notifySessionUpdate(sessionId, updatedSession);
 
-    // 计算排队位置（如果还在排队）
-    const queuePosition = updatedSession.status === 'QUEUED' 
-      ? await this.getQueuePosition(sessionId)
-      : 0;
+    const queuePosition =
+      !noAgentsOnline && updatedSession.status === 'QUEUED'
+        ? updatedSession.queuePosition ?? (await this.getQueuePosition(sessionId))
+        : 0;
+
+    const estimatedWaitTime =
+      !noAgentsOnline && queuePosition && queuePosition > 0
+        ? Math.max(queuePosition * 5, 3)
+        : null;
 
     return {
-      queued: updatedSession.status === 'QUEUED',
-      queuePosition,
-      estimatedWaitTime: queuePosition * 5, // 简单估算：每人5分钟
+      queued: noAgentsOnline ? false : updatedSession.status === 'QUEUED',
+      queuePosition: noAgentsOnline ? null : queuePosition,
+      estimatedWaitTime,
       onlineAgents,
       autoAssigned: updatedSession.status === 'IN_PROGRESS' && updatedSession.agentId !== null,
+      message: noAgentsOnline
+        ? '当前暂无客服在线，我们已记录您的问题，将在客服上线后第一时间处理。'
+        : undefined,
     };
   }
 
@@ -799,23 +856,66 @@ export class SessionService {
       },
     });
 
-    return aheadCount;
+    return aheadCount + 1;
   }
 
-  // 缁撴潫浼氳瘽
+  // 结束会话（客服端）
   async closeSession(sessionId: string) {
     const session = await this.findOne(sessionId);
 
-    return this.prisma.session.update({
+    // 如果会话已经关闭，直接返回
+    if (session.status === 'CLOSED') {
+      return session;
+    }
+
+    const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
         status: 'CLOSED',
         closedAt: new Date(),
       },
     });
+
+    // 创建系统消息通知玩家会话已结束
+    try {
+      const systemMessage = await this.messageService.createSystemMessage(
+        sessionId,
+        '客服已结束会话',
+      );
+      // 通过 WebSocket 通知新消息
+      this.websocketGateway.notifyMessage(sessionId, systemMessage);
+    } catch (error) {
+      console.warn('创建系统消息失败:', error);
+    }
+
+    // 通过 WebSocket 通知所有客户端会话已关闭
+    this.websocketGateway.notifySessionUpdate(sessionId, updatedSession);
+
+    // 检查并更新关联工单的状态
+    if (session.ticketId) {
+      await this.ticketService.checkAndUpdateTicketStatus(session.ticketId);
+    }
+
+    return updatedSession;
   }
 
+  // 结束会话（玩家端）
   async closeByPlayer(sessionId: string) {
+    // 先获取会话信息，以便后续检查工单状态和是否已关闭
+    const existingSession = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { ticketId: true, status: true },
+    });
+
+    if (!existingSession) {
+      throw new NotFoundException('会话不存在');
+    }
+
+    // 如果会话已经关闭，直接返回
+    if (existingSession.status === 'CLOSED') {
+      return await this.findOne(sessionId);
+    }
+
     const session = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
@@ -823,7 +923,27 @@ export class SessionService {
         closedAt: new Date(),
       },
     });
+
+    // 创建系统消息通知客服玩家已离开
+    try {
+      const systemMessage = await this.messageService.createSystemMessage(
+        sessionId,
+        '玩家已离开会话',
+      );
+      // 通过 WebSocket 通知新消息
+      this.websocketGateway.notifyMessage(sessionId, systemMessage);
+    } catch (error) {
+      console.warn('创建系统消息失败:', error);
+    }
+
+    // 通过 WebSocket 通知所有客户端会话已关闭
     this.websocketGateway.notifySessionUpdate(sessionId, session);
+
+    // 检查并更新关联工单的状态
+    if (existingSession.ticketId) {
+      await this.ticketService.checkAndUpdateTicketStatus(existingSession.ticketId);
+    }
+
     return session;
   }
 }
