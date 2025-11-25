@@ -229,7 +229,6 @@ cd backend
 npm run start:dev     # 开发模式（热重载）
 npm run build         # 构建生产版本
 npm run start:prod    # 生产模式运行
-npm run test          # 运行测试
 ```
 
 ### 前端开发
@@ -326,16 +325,6 @@ VITE_WS_URL=ws://localhost:21001
 - `SatisfactionRating` - 满意度评价
 
 详细设计请参考 [数据库设计文档](./docs/数据库设计文档.md)
-
-## 🧪 测试
-
-```bash
-# 后端测试
-cd backend
-npm run test          # 单元测试
-npm run test:e2e      # E2E测试
-npm run test:cov      # 测试覆盖率
-```
 
 ## 📦 构建部署
 

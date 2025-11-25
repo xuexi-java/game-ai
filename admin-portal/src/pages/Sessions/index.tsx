@@ -7,6 +7,7 @@ import {
   Input,
   Select,
   Button,
+  DatePicker,
   Typography,
   Modal,
   Descriptions,
@@ -37,6 +38,7 @@ import './index.css';
 
 const { Option } = Select;
 const { Title } = Typography;
+const { RangePicker } = DatePicker;
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 const resolveAttachmentUrl = (url?: string) => {
@@ -80,6 +82,7 @@ const SessionsPage: React.FC = () => {
     gameId: '',
     search: '',
     transferredToAgent: undefined as boolean | undefined, // undefined: 全部, true: 已转人工, false: 未转人工
+    dateRange: null as [dayjs.Dayjs, dayjs.Dayjs] | null,
   });
 
   const isAdmin = user?.role === 'ADMIN';
@@ -93,6 +96,12 @@ const SessionsPage: React.FC = () => {
         status: filters.status || undefined,
         search: filters.search && filters.search.trim() ? filters.search.trim() : undefined,
         transferredToAgent: filters.transferredToAgent,
+        startDate: filters.dateRange?.[0]
+          ? filters.dateRange[0].startOf('day').format('YYYY-MM-DD')
+          : undefined,
+        endDate: filters.dateRange?.[1]
+          ? filters.dateRange[1].endOf('day').format('YYYY-MM-DD')
+          : undefined,
       };
 
       if (isAdmin && filters.agentId) {
@@ -192,7 +201,15 @@ const SessionsPage: React.FC = () => {
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, pageSize, filters.status, filters.agentId, filters.gameId, filters.transferredToAgent]);
+  }, [
+    currentPage,
+    pageSize,
+    filters.status,
+    filters.agentId,
+    filters.gameId,
+    filters.transferredToAgent,
+    filters.dateRange,
+  ]);
 
   // 搜索使用防抖，避免频繁请求
   useEffect(() => {
@@ -222,6 +239,11 @@ const SessionsPage: React.FC = () => {
 
   const handleSearch = (value: string) => {
     setFilters((prev) => ({ ...prev, search: value }));
+    setCurrentPage(1);
+  };
+
+  const handleDateRangeChange = (value: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
+    setFilters((prev) => ({ ...prev, dateRange: value }));
     setCurrentPage(1);
   };
 
@@ -454,6 +476,14 @@ const SessionsPage: React.FC = () => {
               <Option value="true">已转人工</Option>
               <Option value="false">未转人工</Option>
             </Select>
+
+            <RangePicker
+              value={filters.dateRange || null}
+              onChange={handleDateRangeChange}
+              allowClear
+              style={{ width: 300 }}
+              placeholder={['开始日期', '结束日期']}
+            />
 
             <Button
               icon={<ReloadOutlined />}

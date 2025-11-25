@@ -7,6 +7,7 @@ import {
   Space,
   Input,
   Select,
+  DatePicker,
   Modal,
   Descriptions,
   Typography,
@@ -38,12 +39,14 @@ import './index.css';
 
 const { Option } = Select;
 const { Title } = Typography;
+const { RangePicker } = DatePicker;
 
 type TicketStatus = Ticket['status'];
 type TicketPriority = Ticket['priority'];
 
 type StatusDisplay = { text: string; color: string };
 type PriorityDisplay = { text: string; color: string };
+type DateRangeValue = [dayjs.Dayjs, dayjs.Dayjs] | null;
 
 const STATUS_OPTIONS: Array<{
   value: TicketStatus;
@@ -119,6 +122,7 @@ const TicketsPage: React.FC = () => {
     issueTypeId: '',
     gameId: '',
     search: '',
+    dateRange: null as DateRangeValue,
   });
 
   // 加载数据
@@ -131,6 +135,12 @@ const TicketsPage: React.FC = () => {
         status: filters.status || undefined,
         issueTypeId: filters.issueTypeId || undefined,
         gameId: isAdmin ? filters.gameId || undefined : undefined,
+        startDate: filters.dateRange?.[0]
+          ? filters.dateRange[0].startOf('day').format('YYYY-MM-DD')
+          : undefined,
+        endDate: filters.dateRange?.[1]
+          ? filters.dateRange[1].endOf('day').format('YYYY-MM-DD')
+          : undefined,
         // 不传递 sortBy 和 sortOrder，使用后端默认排序（按问题类型权重分数降序，相同分数按创建时间升序）
       });
 
@@ -264,6 +274,11 @@ const TicketsPage: React.FC = () => {
     } catch (error) {
       console.error('更新优先级失败:', error);
     }
+  };
+
+  const handleDateRangeChange = (value: DateRangeValue) => {
+    setFilters((prev) => ({ ...prev, dateRange: value }));
+    setCurrentPage(1);
   };
 
   // 手动分配会话给客服（支持多次分配）
@@ -560,6 +575,14 @@ const TicketsPage: React.FC = () => {
                   </Option>
                 ))}
               </Select>
+              
+              <RangePicker
+                value={filters.dateRange || null}
+                onChange={handleDateRangeChange}
+                allowClear
+                style={{ width: 280 }}
+                placeholder={['开始日期', '结束日期']}
+              />
               
               <Button
                 icon={<ReloadOutlined />}

@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@nestjs/schedule": "^6.0.1",
-    "@nestjs/swagger": "^7.1.17",
-    "swagger-ui-express": "^5.0.1"
-  }
-}

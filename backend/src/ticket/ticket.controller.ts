@@ -161,16 +161,25 @@ export class TicketController {
   @ApiQuery({ name: 'priority', required: false, description: '优先级' })
   @ApiQuery({ name: 'issueTypeId', required: false, description: '问题类型ID' })
   @ApiQuery({ name: 'gameId', required: false, description: '游戏ID' })
+  @ApiQuery({ name: 'startDate', required: false, description: '开始日期，格式 YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, description: '结束日期，格式 YYYY-MM-DD' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: '返回工单列表' })
   findAll(@Query() query: any, @CurrentUser() user: any) {
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    if (endDate) endDate.setHours(23, 59, 59, 999);
+
     return this.ticketService.findAll(
       {
         status: query.status,
         priority: query.priority,
         issueTypeId: query.issueTypeId,
         gameId: query.gameId,
+        startDate: startDate && isNaN(startDate.getTime()) ? undefined : startDate,
+        endDate: endDate && isNaN(endDate.getTime()) ? undefined : endDate,
         page: query.page ? parseInt(query.page) : 1,
         pageSize: query.pageSize ? parseInt(query.pageSize) : 10,
         sortBy: query.sortBy,

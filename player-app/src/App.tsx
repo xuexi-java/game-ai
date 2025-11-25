@@ -8,7 +8,6 @@ import 'dayjs/locale/zh-cn';
 dayjs.locale('zh-cn');
 
 // 页面组件
-import TestPage from './TestPage';
 import IdentityCheckPage from './pages/IdentityCheck';
 import EscapeHatchPage from './pages/EscapeHatch';
 import IntakeFormPage from './pages/IntakeForm';
@@ -55,7 +54,6 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Navigate to="/identity-check" replace />} />
-              <Route path="/test" element={<TestPage />} />
               <Route path="/identity-check" element={<IdentityCheckPage />} />
               <Route path="/escape-hatch" element={<EscapeHatchPage />} />
               <Route path="/intake-form" element={<IntakeFormPage />} />

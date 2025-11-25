@@ -6,6 +6,8 @@ export interface TicketQueryParams extends PaginationParams {
   priority?: string;
   issueTypeId?: string;
   gameId?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 /**
@@ -18,6 +20,8 @@ export const getTickets = async (params?: TicketQueryParams): Promise<Pagination
   if (params?.priority) queryParams.append('priority', params.priority);
   if (params?.issueTypeId) queryParams.append('issueTypeId', params.issueTypeId);
   if (params?.gameId) queryParams.append('gameId', params.gameId);
+  if (params?.startDate) queryParams.append('startDate', params.startDate);
+  if (params?.endDate) queryParams.append('endDate', params.endDate);
   if (params?.page) queryParams.append('page', params.page.toString());
   if (params?.pageSize) queryParams.append('pageSize', params.pageSize.toString());
   if (params?.sortBy) queryParams.append('sortBy', params.sortBy);

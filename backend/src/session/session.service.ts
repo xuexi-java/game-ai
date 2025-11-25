@@ -351,6 +351,8 @@ export class SessionService {
       gameId?: string;
       search?: string;
       transferredToAgent?: boolean;
+      startDate?: Date;
+      endDate?: Date;
       page?: number;
       pageSize?: number;
       sortBy?: string;
@@ -415,6 +417,15 @@ export class SessionService {
 
     if (Object.keys(ticketFilter).length > 0) {
       where.ticket = ticketFilter;
+    }
+    if (query.startDate || query.endDate) {
+      where.createdAt = {};
+      if (query.startDate) {
+        where.createdAt.gte = query.startDate;
+      }
+      if (query.endDate) {
+        where.createdAt.lte = query.endDate;
+      }
     }
 
     const [items, total] = await this.prisma.$transaction([

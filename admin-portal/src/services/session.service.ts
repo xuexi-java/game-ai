@@ -7,6 +7,8 @@ export interface SessionQueryParams extends PaginationParams {
   gameId?: string;
   search?: string;
   transferredToAgent?: boolean; // true: 已转人工, false: 未转人工, undefined: 全部
+  startDate?: string;
+  endDate?: string;
 }
 
 /**

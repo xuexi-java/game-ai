@@ -116,16 +116,25 @@ export class SessionController {
   @ApiQuery({ name: 'gameId', required: false, description: '游戏ID' })
   @ApiQuery({ name: 'search', required: false, description: '搜索关键词' })
   @ApiQuery({ name: 'transferredToAgent', required: false, type: Boolean })
+  @ApiQuery({ name: 'startDate', required: false, description: '开始日期，格式 YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, description: '结束日期，格式 YYYY-MM-DD' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: '返回会话列表' })
   findAll(@Query() query: any, @CurrentUser() user: any) {
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    if (endDate) endDate.setHours(23, 59, 59, 999);
+
     return this.sessionService.findAll(
       {
         status: query.status,
         agentId: query.agentId,
         gameId: query.gameId,
         search: query.search,
+        startDate: startDate && isNaN(startDate.getTime()) ? undefined : startDate,
+        endDate: endDate && isNaN(endDate.getTime()) ? undefined : endDate,
         transferredToAgent:
           query.transferredToAgent !== undefined
             ? query.transferredToAgent === 'true'

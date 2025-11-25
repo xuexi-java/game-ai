@@ -386,6 +386,8 @@ export class TicketService {
       priority?: string;
       issueTypeId?: string;
       gameId?: string;
+      startDate?: Date;
+      endDate?: Date;
       page?: number;
       pageSize?: number;
       sortBy?: string;
@@ -412,6 +414,15 @@ export class TicketService {
     }
     if (query.gameId) {
       where.gameId = query.gameId;
+    }
+    if (query.startDate || query.endDate) {
+      where.createdAt = {};
+      if (query.startDate) {
+        where.createdAt.gte = query.startDate;
+      }
+      if (query.endDate) {
+        where.createdAt.lte = query.endDate;
+      }
     }
 
     if (currentUser?.role === 'AGENT') {
