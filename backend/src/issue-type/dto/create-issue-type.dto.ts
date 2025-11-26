@@ -31,4 +31,8 @@ export class CreateIssueTypeDto {
   @IsOptional()
   @IsString()
   icon?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  requireDirectTransfer?: boolean;
 }

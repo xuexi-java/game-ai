@@ -55,7 +55,8 @@ const QueuePage = () => {
       updateSession({
         priorityScore: data.priorityScore,
         queuedAt: data.queuedAt,
-        queuePosition: data.queuePosition,
+        queuePosition: data.position || data.queuePosition,
+        estimatedWaitTime: data.waitTime,
       });
     });
 
@@ -141,6 +142,17 @@ const QueuePage = () => {
     );
   }
 
+  // 格式化预计等待时间
+  const formatWaitTime = (minutes: number | null | undefined) => {
+    if (!minutes || minutes <= 0) return null;
+    if (minutes < 1) return '不到1分钟';
+    if (minutes < 60) return `约${Math.ceil(minutes)}分钟`;
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.ceil(minutes % 60);
+    if (mins === 0) return `约${hours}小时`;
+    return `约${hours}小时${mins}分钟`;
+  };
+
   // 正常排队状态
   return (
     <div className="page-container">
@@ -150,13 +162,19 @@ const QueuePage = () => {
         <Paragraph>请稍候，客服将尽快为您服务...</Paragraph>
         
         {session.queuePosition && session.queuePosition > 0 && (
-          <Paragraph>
-            当前排队位置: <strong>第 {session.queuePosition} 位</strong>
+          <Paragraph style={{ fontSize: '16px', marginTop: '16px' }}>
+            当前排队位置: <strong style={{ color: '#1890ff', fontSize: '18px' }}>第 {session.queuePosition} 位</strong>
+          </Paragraph>
+        )}
+        
+        {session.estimatedWaitTime && session.estimatedWaitTime > 0 && (
+          <Paragraph style={{ fontSize: '16px', marginTop: '8px' }}>
+            预计等待时间: <strong style={{ color: '#52c41a', fontSize: '18px' }}>{formatWaitTime(session.estimatedWaitTime)}</strong>
           </Paragraph>
         )}
         
         {session.priorityScore && (
-          <Paragraph type="secondary">
+          <Paragraph type="secondary" style={{ marginTop: '16px', fontSize: '14px' }}>
             优先级评分: {session.priorityScore.toFixed(2)}
           </Paragraph>
         )}

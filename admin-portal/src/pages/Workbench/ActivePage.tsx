@@ -15,8 +15,7 @@ import {
   SendOutlined,
   CloseOutlined,
   PaperClipOutlined,
-  SmileOutlined,
-  FolderOutlined,
+  ThunderboltOutlined,
   CopyOutlined,
   RobotOutlined,
   UserAddOutlined,
@@ -277,9 +276,18 @@ const ActivePage: React.FC = () => {
 
   useEffect(() => {
     loadSessions();
+    
+    // 定时刷新待接入队列（每30秒）
+    const refreshInterval = setInterval(() => {
+      loadSessions();
+    }, AGENT_STATUS_POLL_INTERVAL);
+    
+    return () => {
+      clearInterval(refreshInterval);
+    };
   }, [loadSessions]);
 
-  // 监听会话关闭事件，自动刷新会话列表
+  // 监听会话关闭事件和刷新事件，自动刷新会话列表
   useEffect(() => {
     const handleSessionClosed = (event: CustomEvent<string>) => {
       const closedSessionId = event.detail;
@@ -294,9 +302,16 @@ const ActivePage: React.FC = () => {
       loadSessions();
     };
 
+    const handleRefreshSessions = () => {
+      console.log('收到刷新会话列表事件');
+      loadSessions();
+    };
+
     window.addEventListener('session-closed', handleSessionClosed as EventListener);
+    window.addEventListener('refresh-sessions', handleRefreshSessions as EventListener);
     return () => {
       window.removeEventListener('session-closed', handleSessionClosed as EventListener);
+      window.removeEventListener('refresh-sessions', handleRefreshSessions as EventListener);
     };
   }, [currentSession, loadSessions]);
 
@@ -1512,13 +1527,7 @@ const ActivePage: React.FC = () => {
                   </Upload>
                   <Button 
                     type="text" 
-                    icon={<SmileOutlined />} 
-                    title="表情"
-                    disabled={!isJoined}
-                  />
-                  <Button 
-                    type="text" 
-                    icon={<FolderOutlined />} 
+                    icon={<ThunderboltOutlined />} 
                     title="快捷回复"
                     disabled={!isJoined}
                   />

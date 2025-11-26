@@ -316,22 +316,24 @@ model SatisfactionRating {
 // ==================== 问题类型 ====================
 
 model IssueType {
-  id              String   @id @default(uuid())
-  name            String   // 问题类型名称
-  description     String?  @db.Text // 问题描述
-  priorityWeight  Int      @default(50) // 优先级权重 1-100
-  enabled         Boolean  @default(true) // 是否启用
-  sortOrder       Int      @default(0) // 显示排序
-  icon            String?  // 图标
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
+  id                    String   @id @default(uuid())
+  name                  String   // 问题类型名称
+  description           String?  @db.Text // 问题描述
+  priorityWeight        Int      @default(50) // 优先级权重 1-100
+  enabled               Boolean  @default(true) // 是否启用
+  sortOrder             Int      @default(0) // 显示排序
+  icon                  String?  // 图标
+  requireDirectTransfer Boolean  @default(false) // 是否需要直接转接人工客服
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  deletedAt             DateTime?
 
   // 关系
   ticketIssueTypes TicketIssueType[]
 
   @@index([enabled, sortOrder])
   @@index([priorityWeight(desc)])
+  @@index([requireDirectTransfer])
   @@map("IssueType")
 }
 

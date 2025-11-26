@@ -239,15 +239,20 @@ const TicketChatPage = () => {
         if (response.ok) {
           // 系统消息会通过 WebSocket 自动推送，不需要手动添加
           antdMessage.success('已退出会话');
-          // 工单状态会通过 WebSocket 自动更新，这里不需要手动更新
+          // 返回主页
+          setTimeout(() => {
+            window.location.href = '/identity-check';
+          }, 1000);
         } else {
           const errorData = await response.json().catch(() => ({}));
           antdMessage.error(errorData.message || '退出会话失败');
         }
       } else {
-        // 如果没有活跃会话，直接标记工单为已解决
-        antdMessage.info('当前没有活跃会话，工单已标记为已解决');
-        setTicket((prev) => (prev ? { ...prev, status: 'RESOLVED' } : null));
+        // 如果没有活跃会话，直接返回主页
+        antdMessage.info('返回主页');
+        setTimeout(() => {
+          window.location.href = '/identity-check';
+        }, 500);
       }
     } catch (error) {
       console.error('退出会话失败:', error);
@@ -358,11 +363,10 @@ const TicketChatPage = () => {
         <div className="header-actions">
           <Button 
             type="text" 
-            danger 
             onClick={handleExitSession}
             style={{ marginRight: 8 }}
           >
-            退出会话
+            返回主页
           </Button>
           <Tag color={statusInfo.color}>{statusInfo.text}</Tag>
         </div>

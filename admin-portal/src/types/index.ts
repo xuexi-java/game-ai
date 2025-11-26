@@ -218,6 +218,7 @@ export interface IssueType {
   enabled: boolean;
   sortOrder: number;
   icon?: string;
+  requireDirectTransfer?: boolean;
   createdAt: string;
   updatedAt: string;
 }

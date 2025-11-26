@@ -292,10 +292,12 @@ export class WebsocketGateway
   }
 
   // 通知队列更新
-  notifyQueueUpdate(sessionId: string, position: number, waitTime?: number) {
+  notifyQueueUpdate(sessionId: string, position: number, waitTime?: number | null) {
     this.server.to(`session:${sessionId}`).emit('queue-update', {
-      position,
+      queuePosition: position,
+      position, // 兼容旧版本
       waitTime,
+      estimatedWaitTime: waitTime, // 兼容新版本
     });
   }
 

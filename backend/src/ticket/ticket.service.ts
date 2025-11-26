@@ -5,6 +5,7 @@ import { TicketPriorityService } from './ticket-priority.service';
 import { TicketMessageService } from '../ticket-message/ticket-message.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { SessionService } from '../session/session.service';
+import { IssueTypeService } from '../issue-type/issue-type.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class TicketService {
     private websocketGateway: WebsocketGateway,
     @Inject(forwardRef(() => SessionService))
     private sessionService: SessionService,
+    private issueTypeService: IssueTypeService,
   ) {}
 
   // 生成工单编号
@@ -149,6 +151,17 @@ export class TicketService {
       }
     }
 
+    // 检查是否需要直接转人工（检查问题类型是否设置了 requireDirectTransfer）
+    let requiresDirectTransfer = false;
+    if (issueTypeIds && issueTypeIds.length > 0) {
+      const issueTypes = await this.issueTypeService.findByIds(issueTypeIds);
+      requiresDirectTransfer = issueTypes.some((type) => type.requireDirectTransfer);
+    }
+
+    // 如果需要直接转人工，状态设置为 WAITING（待人工处理）
+    // 否则设置为 IN_PROGRESS（处理中，会进入AI流程）
+    const initialStatus = requiresDirectTransfer ? 'WAITING' : 'IN_PROGRESS';
+
     // 先创建工单（不设置 priorityScore，稍后计算）
     const ticket = await this.prisma.ticket.create({
       data: {
@@ -157,7 +170,7 @@ export class TicketService {
         serverName,
         ticketNo,
         token,
-        status: 'IN_PROGRESS',
+        status: initialStatus,
         identityStatus: 'NOT_VERIFIED',
         priority: 'NORMAL', // 临时设置，稍后更新
         priorityScore: 50, // 临时设置，稍后更新
@@ -183,6 +196,27 @@ export class TicketService {
       },
     });
 
+    // 如果需要直接转人工，检查是否有在线客服
+    let hasOnlineAgents = false;
+    if (requiresDirectTransfer) {
+      // 检查是否有在线客服
+      const onlineAgentsCount = await this.prisma.user.count({
+        where: {
+          role: 'AGENT',
+          isOnline: true,
+          deletedAt: null,
+        },
+      });
+      hasOnlineAgents = onlineAgentsCount > 0;
+
+      // 如果有在线客服，异步尝试自动分配（不阻塞响应）
+      if (hasOnlineAgents) {
+        this.autoAssignDirectTransferTicket(ticket.id).catch((error) => {
+          console.error('自动分配直接转人工工单失败:', error);
+        });
+      }
+    }
+
     // 异步验证身份（如果有订单号）
     if (createTicketDto.paymentOrderNo) {
       this.verifyPaymentIdentity(
@@ -198,6 +232,7 @@ export class TicketService {
       id: ticket.id,
       ticketNo: ticket.ticketNo,
       token: ticket.token,
+      hasOnlineAgents: requiresDirectTransfer ? hasOnlineAgents : undefined,
     };
   }
 
@@ -573,6 +608,7 @@ export class TicketService {
           select: {
             id: true,
             status: true,
+            agentId: true, // 检查是否被分配给客服
           },
         },
       },
@@ -582,7 +618,7 @@ export class TicketService {
       return;
     }
 
-    // 如果工单已经是 RESOLVED 或 CLOSED，不需要更新
+    // 如果工单已经是 RESOLVED，不需要更新
     if (ticket.status === 'RESOLVED') {
       return;
     }
@@ -593,23 +629,55 @@ export class TicketService {
       ticket.sessions.every((session) => session.status === 'CLOSED');
 
     if (allSessionsClosed) {
-      await this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: 'RESOLVED',
-          closedAt: new Date(),
+      // 检查是否有客服消息（说明客服曾经接入过）
+      const hasAgentMessages = await this.prisma.ticketMessage.count({
+        where: {
+          ticketId,
+          senderId: { not: null }, // 有客服发送的消息
         },
       });
 
-      // 通知 WebSocket 客户端工单状态更新
-      try {
-        this.websocketGateway.notifyTicketUpdate(ticketId, {
-          status: 'RESOLVED',
-          closedAt: new Date(),
+      // 检查是否有会话曾经被分配给客服
+      const hasAssignedAgent = ticket.sessions.some((session) => session.agentId !== null);
+
+      // 只有在客服曾经接入过（有客服消息或会话被分配给客服）的情况下，才标记为已解决
+      if (hasAgentMessages > 0 || hasAssignedAgent) {
+        await this.prisma.ticket.update({
+          where: { id: ticketId },
+          data: {
+            status: 'RESOLVED',
+            closedAt: new Date(),
+          },
         });
-      } catch (error) {
-        // WebSocket 通知失败不影响状态更新
-        console.warn('WebSocket 通知失败:', error);
+
+        // 通知 WebSocket 客户端工单状态更新
+        try {
+          this.websocketGateway.notifyTicketUpdate(ticketId, {
+            status: 'RESOLVED',
+            closedAt: new Date(),
+          });
+        } catch (error) {
+          // WebSocket 通知失败不影响状态更新
+          console.warn('WebSocket 通知失败:', error);
+        }
+      } else {
+        // 如果没有客服消息且没有分配给客服，只是玩家退出，将工单状态改为 WAITING
+        // 这样工单会继续等待客服处理
+        await this.prisma.ticket.update({
+          where: { id: ticketId },
+          data: {
+            status: 'WAITING',
+          },
+        });
+
+        // 通知 WebSocket 客户端工单状态更新
+        try {
+          this.websocketGateway.notifyTicketUpdate(ticketId, {
+            status: 'WAITING',
+          });
+        } catch (error) {
+          console.warn('WebSocket 通知失败:', error);
+        }
       }
     }
   }
@@ -844,6 +912,14 @@ export class TicketService {
             console.warn(`工单 ${ticket.ticketNo} 自动分配失败:`, error);
           }
 
+          // 通知管理端有新会话（无论是否分配成功）
+          try {
+            const enrichedSession = await this.sessionService.findOne(session.id);
+            this.websocketGateway.notifyNewSession(enrichedSession);
+          } catch (error) {
+            console.warn(`通知新会话失败: ${error.message}`);
+          }
+
           // 更新工单状态
           await this.prisma.ticket.update({
             where: { id: ticket.id },
@@ -860,6 +936,121 @@ export class TicketService {
       }
     } catch (error) {
       console.error('自动分配工单失败:', error);
+    }
+  }
+
+  /**
+   * 自动分配直接转人工的工单（创建工单时立即尝试分配）
+   */
+  private async autoAssignDirectTransferTicket(ticketId: string): Promise<void> {
+    try {
+      // 获取所有在线客服
+      const onlineAgents = await this.prisma.user.findMany({
+        where: {
+          role: 'AGENT',
+          isOnline: true,
+          deletedAt: null,
+        },
+        include: {
+          sessions: {
+            where: {
+              status: {
+                in: ['QUEUED', 'IN_PROGRESS'],
+              },
+            },
+          },
+        },
+      });
+
+      if (onlineAgents.length === 0) {
+        return; // 没有在线客服，等待客服上线时自动分配
+      }
+
+      // 检查是否已经有活跃会话
+      const hasActiveSession = await this.prisma.session.findFirst({
+        where: {
+          ticketId,
+          status: {
+            in: ['PENDING', 'QUEUED', 'IN_PROGRESS'],
+          },
+        },
+      });
+
+      if (hasActiveSession) {
+        return; // 已有活跃会话，跳过
+      }
+
+      // 计算每个客服的负载和登录时间
+      const agentsWithLoad = onlineAgents.map((agent) => ({
+        agent,
+        load: agent.sessions.length,
+        loginTime: agent.lastLoginAt || agent.createdAt,
+      }));
+
+      // 排序：先按负载升序，负载相同时按登录时间升序（最早登录优先）
+      agentsWithLoad.sort((a, b) => {
+        if (a.load !== b.load) {
+          return a.load - b.load; // 负载少的优先
+        }
+        // 负载相同时，最早登录的优先
+        return new Date(a.loginTime).getTime() - new Date(b.loginTime).getTime();
+      });
+
+      const selectedAgent = agentsWithLoad[0].agent;
+
+      // 获取工单信息
+      const ticket = await this.prisma.ticket.findUnique({
+        where: { id: ticketId },
+      });
+
+      if (!ticket) {
+        return;
+      }
+
+      // 创建新会话并分配给选中的客服
+      const session = await this.prisma.session.create({
+        data: {
+          ticketId,
+          agentId: selectedAgent.id,
+          status: 'QUEUED',
+          priorityScore: ticket.priorityScore || 0,
+          queuedAt: new Date(),
+          manuallyAssigned: false,
+        },
+        include: {
+          ticket: {
+            include: {
+              game: true,
+              server: true,
+            },
+          },
+        },
+      });
+
+      // 重新排序队列（这会计算并发送排队位置和预计等待时间）
+      try {
+        await this.sessionService.reorderQueue();
+      } catch (error) {
+        console.warn(`重新排序队列失败: ${error.message}`);
+      }
+
+      // 尝试自动分配（会更新状态为 IN_PROGRESS）
+      try {
+        await this.sessionService.autoAssignSession(session.id);
+      } catch (error) {
+        // 自动分配失败，保持 QUEUED 状态
+        console.warn(`自动分配会话失败: ${error.message}`);
+      }
+
+      // 通知管理端有新会话（无论是否分配成功）
+      try {
+        const enrichedSession = await this.sessionService.findOne(session.id);
+        this.websocketGateway.notifyNewSession(enrichedSession);
+      } catch (error) {
+        console.warn(`通知新会话失败: ${error.message}`);
+      }
+    } catch (error) {
+      console.error(`自动分配直接转人工工单失败: ${error.message}`);
     }
   }
 }

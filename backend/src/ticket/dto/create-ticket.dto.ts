@@ -59,4 +59,7 @@ export class TicketResponseDto {
 
   @ApiProperty({ description: '工单访问令牌' })
   token: string;
+
+  @ApiProperty({ description: '是否有在线客服（仅直接转人工时返回）', required: false })
+  hasOnlineAgents?: boolean;
 }

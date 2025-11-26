@@ -964,14 +964,27 @@ export class SessionService {
     const finalSession = await this.findOne(sessionId);
     this.websocketGateway.notifySessionUpdate(sessionId, finalSession);
 
+    // 获取在线客服数量
+    const onlineAgentsCount = await this.prisma.user.count({
+      where: {
+        role: 'AGENT',
+        isOnline: true,
+        deletedAt: null,
+      },
+    });
+
     const queuePosition =
       finalSession.status === 'QUEUED'
         ? finalSession.queuePosition ?? (await this.getQueuePosition(sessionId))
         : 0;
 
+    // 计算预计等待时间（分钟）
+    // 公式：预计等待时间 = (前面排队人数 / 在线客服数量) * 平均处理时间
+    // 平均处理时间默认5分钟
+    const averageProcessingTime = 5;
     const estimatedWaitTime =
-      queuePosition && queuePosition > 0
-        ? Math.max(queuePosition * 5, 3)
+      queuePosition && queuePosition > 0 && onlineAgentsCount > 0
+        ? Math.ceil((queuePosition / onlineAgentsCount) * averageProcessingTime)
         : null;
 
     return {
@@ -1051,19 +1064,48 @@ export class SessionService {
     return true;
   }
 
-  // 閲嶆柊鎺掑簭闃熷垪
-  private async reorderQueue() {
+
+  // 重新排序队列（公开方法，供其他服务调用）
+  async reorderQueue() {
     const queuedSessions = await this.prisma.session.findMany({
       where: { status: 'QUEUED' },
       orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
     });
 
-    // 鏇存柊鎺掗槦浣嶇疆
+    // 获取在线客服数量
+    const onlineAgentsCount = await this.prisma.user.count({
+      where: {
+        role: 'AGENT',
+        isOnline: true,
+        deletedAt: null,
+      },
+    });
+
+    // 计算平均处理时间（分钟），默认5分钟
+    const averageProcessingTime = 5;
+
+    // 更新排队位置并发送 WebSocket 通知
     for (let i = 0; i < queuedSessions.length; i++) {
+      const queuePosition = i + 1;
       await this.prisma.session.update({
         where: { id: queuedSessions[i].id },
-        data: { queuePosition: i + 1 },
+        data: { queuePosition },
       });
+
+      // 计算预计等待时间（分钟）
+      // 公式：预计等待时间 = (前面排队人数 / 在线客服数量) * 平均处理时间
+      // 如果没有在线客服，预计等待时间设为 null
+      const estimatedWaitTime =
+        onlineAgentsCount > 0
+          ? Math.ceil((queuePosition / onlineAgentsCount) * averageProcessingTime)
+          : null;
+
+      // 发送 WebSocket 通知
+      this.websocketGateway.notifyQueueUpdate(
+        queuedSessions[i].id,
+        queuePosition,
+        estimatedWaitTime,
+      );
     }
   }
 

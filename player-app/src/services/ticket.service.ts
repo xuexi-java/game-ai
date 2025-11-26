@@ -37,6 +37,7 @@ export interface CreateTicketResponse {
   ticketId?: string;
   ticketNo: string;
   token: string;
+  hasOnlineAgents?: boolean; // 是否有在线客服（仅直接转人工时返回）
 }
 
 /**

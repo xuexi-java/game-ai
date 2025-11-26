@@ -40,6 +40,7 @@ interface IssueTypeFormValues {
   enabled: boolean;
   sortOrder: number;
   icon?: string;
+  requireDirectTransfer?: boolean;
 }
 
 const UrgencyRulesPage: React.FC = () => {
@@ -78,6 +79,7 @@ const UrgencyRulesPage: React.FC = () => {
       enabled: true,
       priorityWeight: 50,
       sortOrder: 0,
+      requireDirectTransfer: false,
     });
     setModalOpen(true);
   };
@@ -91,6 +93,7 @@ const UrgencyRulesPage: React.FC = () => {
       enabled: issueType.enabled,
       sortOrder: issueType.sortOrder,
       icon: issueType.icon,
+      requireDirectTransfer: issueType.requireDirectTransfer || false,
     });
     setModalOpen(true);
   };
@@ -188,6 +191,15 @@ const UrgencyRulesPage: React.FC = () => {
       width: 100,
       render: (value, record) => (
         <Switch checked={value} onChange={(checked) => handleToggle(record, checked)} />
+      ),
+    },
+    {
+      title: '直接转人工',
+      dataIndex: 'requireDirectTransfer',
+      key: 'requireDirectTransfer',
+      width: 120,
+      render: (value) => (
+        value ? <Tag color="orange">是</Tag> : <Tag color="default">否</Tag>
       ),
     },
     {
@@ -330,6 +342,15 @@ const UrgencyRulesPage: React.FC = () => {
           </Form.Item>
 
           <Form.Item label="启用" name="enabled" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="直接转接人工客服"
+            name="requireDirectTransfer"
+            valuePropName="checked"
+            tooltip="开启后，玩家选择此问题类型时将跳过问题描述表单和AI客服，直接进入人工客服排队"
+          >
             <Switch />
           </Form.Item>
         </Form>

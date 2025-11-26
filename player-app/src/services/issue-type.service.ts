@@ -9,6 +9,7 @@ export interface IssueType {
   priorityWeight: number;
   icon?: string;
   sortOrder: number;
+  requireDirectTransfer?: boolean;
 }
 
 // 获取启用的问题类型列表

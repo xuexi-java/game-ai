@@ -24,6 +24,7 @@ export class IssueTypeService {
         priorityWeight: true,
         icon: true,
         sortOrder: true,
+        requireDirectTransfer: true,
       },
     });
   }

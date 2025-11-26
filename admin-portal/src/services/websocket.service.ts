@@ -87,9 +87,14 @@ class WebSocketService {
     this.socket.on('new-session', (session: Session) => {
       console.log('收到新会话:', session);
       const { queuedSessions, setQueuedSessions } = useSessionStore.getState();
-      setQueuedSessions([...queuedSessions, session]);
-      
-      message.info(`新会话: ${session.ticket.ticketNo}`, 3);
+      // 检查是否已存在，避免重复添加
+      const exists = queuedSessions.some(s => s.id === session.id);
+      if (!exists) {
+        setQueuedSessions([...queuedSessions, session]);
+        message.info(`新会话: ${session.ticket?.ticketNo || session.id}`, 3);
+      }
+      // 触发刷新事件，让页面重新加载完整列表
+      window.dispatchEvent(new CustomEvent('refresh-sessions'));
     });
 
     this.socket.on('agent-status-changed', (payload) => {

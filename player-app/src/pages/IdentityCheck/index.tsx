@@ -9,7 +9,8 @@ import { getEnabledIssueTypes, type IssueType } from '../../services/issue-type.
 import { useTicketStore } from '../../stores/ticketStore';
 import { validateGameId, validatePlayerIdOrName } from '../../utils/validation';
 import { useMessage } from '../../hooks/useMessage';
-import { checkOpenTicketByIssueType } from '../../services/ticket.service';
+import { checkOpenTicketByIssueType, createTicket, getTicketByToken } from '../../services/ticket.service';
+import { createSession } from '../../services/session.service';
 import './index.css';
 
 const { Option } = Select;
@@ -22,7 +23,7 @@ const IdentityCheckPage = () => {
   const [issueTypes, setIssueTypes] = useState<IssueType[]>([]);
   const [loading, setLoading] = useState(false);
   const messageApi = useMessage();
-  const { setIdentity, setIssueTypes: setStoreIssueTypes } = useTicketStore();
+  const { setIdentity, setIssueTypes: setStoreIssueTypes, setTicket } = useTicketStore();
 
   // 加载游戏列表和问题类型
   useEffect(() => {
@@ -117,6 +118,10 @@ const IdentityCheckPage = () => {
       // 保存选中的问题类型（不再验证 UUID 格式，因为数据库中的 ID 可能是字符串格式）
       setStoreIssueTypes([values.issueTypeId]);
 
+      // 获取选中的问题类型信息
+      const selectedIssueType = issueTypes.find((type) => type.id === values.issueTypeId);
+      const requiresDirectTransfer = selectedIssueType?.requireDirectTransfer || false;
+
       // 检查是否有相同问题类型的未完成工单（使用 serverName）
       const result = await checkOpenTicketByIssueType({
         gameId: values.gameId,
@@ -147,19 +152,107 @@ const IdentityCheckPage = () => {
             navigate(`/ticket/${result.ticket!.token}`);
           },
           onCancel: () => {
-            // 反馈新问题，继续进入下一步
-            navigate('/intake-form');
+            // 反馈新问题，根据问题类型决定流程
+            if (requiresDirectTransfer) {
+              // 直接转人工：创建工单并进入排队
+              handleDirectTransfer(values);
+            } else {
+              // 正常流程：进入问题描述表单
+              navigate('/intake-form');
+            }
           },
         });
         return;
       }
 
-      // 没有未完成工单，直接进入下一步
-      navigate('/intake-form');
+      // 没有未完成工单，根据问题类型决定流程
+      if (requiresDirectTransfer) {
+        // 直接转人工：创建工单并进入排队
+        await handleDirectTransfer(values);
+      } else {
+        // 正常流程：进入问题描述表单
+        navigate('/intake-form');
+      }
     } catch (error: unknown) {
       console.error('身份验证失败:', error);
       messageApi.error('身份验证失败，请重试');
     } finally {
+      setLoading(false);
+    }
+  };
+
+  // 处理直接转人工的逻辑：直接创建工单并进入工单聊天页面
+  const handleDirectTransfer = async (values: {
+    gameId: string;
+    serverName: string;
+    playerIdOrName: string;
+    issueTypeId: string;
+  }) => {
+    try {
+      // 获取问题类型名称
+      const issueType = issueTypes.find((type) => type.id === values.issueTypeId);
+      const issueTypeName = issueType?.name || '未知问题类型';
+
+      // 创建工单（使用默认描述）
+      const ticketData = {
+        gameId: values.gameId,
+        serverName: values.serverName,
+        playerIdOrName: values.playerIdOrName,
+        description: `问题类型：${issueTypeName}`,
+        issueTypeIds: [values.issueTypeId],
+      };
+
+      const ticket = await createTicket(ticketData);
+      let resolvedTicketId =
+        ticket.id || (ticket as { ticketId?: string }).ticketId;
+
+      if (!resolvedTicketId && ticket.token) {
+        try {
+          const detail = await getTicketByToken(ticket.token);
+          resolvedTicketId = detail.id;
+        } catch (detailError) {
+          console.error('根据 token 获取工单详情失败:', detailError);
+        }
+      }
+
+      if (!resolvedTicketId) {
+        throw new Error('工单创建成功但未返回 ID');
+      }
+
+      if (!ticket.token) {
+        throw new Error('工单创建成功但未返回 token');
+      }
+
+      // 保存工单信息到 store
+      setTicket(resolvedTicketId, ticket.ticketNo, ticket.token);
+
+      // 检查是否有在线客服
+      if (ticket.hasOnlineAgents === false) {
+        // 没有在线客服，显示提示弹窗
+        Modal.warning({
+          title: '暂无客服在线',
+          content: '当前没有客服在线，您的工单已创建。当有客服上线时，我们会自动为您分配客服。您可以通过工单号查看处理进度。',
+          okText: '我知道了',
+          onOk: () => {
+            // 跳转到工单聊天页面
+            navigate(`/ticket/${ticket.token}`);
+          },
+        });
+      } else {
+        // 有在线客服，创建会话并进入排队页面
+        try {
+          const session = await createSession({ ticketId: resolvedTicketId });
+          // 跳转到排队页面
+          navigate(`/queue/${session.id}`);
+        } catch (error) {
+          console.error('创建会话失败:', error);
+          // 如果创建会话失败，仍然跳转到工单聊天页面
+          navigate(`/ticket/${ticket.token}`);
+        }
+      }
+    } catch (error: unknown) {
+      console.error('创建工单失败:', error);
+      messageApi.error('创建工单失败，请重试');
       setLoading(false);
     }
   };
