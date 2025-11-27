@@ -32,8 +32,10 @@ export class WebsocketGateway
   private readonly logger = new Logger(WebsocketGateway.name);
   private connectedClients = new Map<
     string,
-    { userId?: string; role?: string; username?: string; realName?: string }
+    { userId?: string; role?: string; username?: string; realName?: string; sessionId?: string }
   >();
+  private playerSessions = new Map<string, string>(); // clientId -> sessionId
+  private heartbeatIntervals = new Map<string, NodeJS.Timeout>(); // clientId -> interval
 
   constructor(
     private jwtService: JwtService,
@@ -97,6 +99,9 @@ export class WebsocketGateway
         // 玩家端连接（无token）
         this.connectedClients.set(client.id, {});
         this.logger.log(`玩家连接: ${client.id}`);
+        
+        // 设置心跳检测
+        this.setupHeartbeat(client);
       }
     } catch (error) {
       this.logger.error(`连接处理错误: ${error.message}`);
@@ -105,6 +110,9 @@ export class WebsocketGateway
 
   async handleDisconnect(client: Socket) {
     const clientInfo = this.connectedClients.get(client.id);
+
+    // 清除心跳检测
+    this.clearHeartbeat(client.id);
 
     if (clientInfo?.userId) {
       // 更新用户离线状态
@@ -119,6 +127,30 @@ export class WebsocketGateway
           username: clientInfo.username,
           realName: clientInfo.realName,
         });
+      }
+    } else {
+      // 玩家端断开连接，检查是否有活跃会话需要关闭
+      const sessionId = this.playerSessions.get(client.id);
+      if (sessionId) {
+        try {
+          const activeSession = await this.prisma.session.findUnique({
+            where: { id: sessionId },
+          });
+
+          if (activeSession && (activeSession.status === 'IN_PROGRESS' || activeSession.status === 'QUEUED')) {
+            // 调用 sessionService 的 closeByPlayer 方法
+            const { SessionService } = await import('../session/session.service');
+            const sessionService = new SessionService(
+              this.prisma,
+              this.messageService,
+              this.ticketService,
+            );
+            await sessionService.closeByPlayer(activeSession.id);
+          }
+        } catch (error) {
+          this.logger.error(`处理玩家断开连接失败: ${error.message}`);
+        }
+        this.playerSessions.delete(client.id);
       }
     }
 
@@ -244,8 +276,65 @@ export class WebsocketGateway
     @ConnectedSocket() client: Socket,
   ) {
     client.join(`session:${data.sessionId}`);
+    
+    // 记录玩家的会话ID（用于断开连接时关闭会话）
+    const clientInfo = this.connectedClients.get(client.id);
+    if (!clientInfo?.userId) {
+      // 玩家端
+      this.playerSessions.set(client.id, data.sessionId);
+      const existingInfo = this.connectedClients.get(client.id);
+      if (existingInfo) {
+        existingInfo.sessionId = data.sessionId;
+      }
+    }
+    
     this.logger.log(`客户端加入会话: ${data.sessionId}`);
     return { success: true };
+  }
+
+  // 心跳检测
+  @SubscribeMessage('ping')
+  handlePing(@ConnectedSocket() client: Socket) {
+    client.emit('pong');
+    return { success: true };
+  }
+
+  // 设置心跳检测
+  private setupHeartbeat(client: Socket) {
+    // 清除旧的定时器
+    this.clearHeartbeat(client.id);
+
+    // 设置心跳超时（30秒无响应则视为断开）
+    let lastPingTime = Date.now();
+    const heartbeatTimeout = 30000; // 30秒
+
+    // 监听 ping 消息
+    client.on('ping', () => {
+      lastPingTime = Date.now();
+      client.emit('pong');
+    });
+
+    // 定期检查心跳
+    const interval = setInterval(() => {
+      const timeSinceLastPing = Date.now() - lastPingTime;
+      if (timeSinceLastPing > heartbeatTimeout) {
+        this.logger.warn(`客户端 ${client.id} 心跳超时，断开连接`);
+        client.disconnect();
+        clearInterval(interval);
+        this.heartbeatIntervals.delete(client.id);
+      }
+    }, 10000); // 每10秒检查一次
+
+    this.heartbeatIntervals.set(client.id, interval);
+  }
+
+  // 清除心跳检测
+  private clearHeartbeat(clientId: string) {
+    const interval = this.heartbeatIntervals.get(clientId);
+    if (interval) {
+      clearInterval(interval);
+      this.heartbeatIntervals.delete(clientId);
+    }
   }
 
   // 离开会话房间

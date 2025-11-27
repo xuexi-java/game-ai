@@ -226,27 +226,28 @@ const IdentityCheckPage = () => {
       // 保存工单信息到 store
       setTicket(resolvedTicketId, ticket.ticketNo, ticket.token);
 
-      // 检查是否有在线客服
-      if (ticket.hasOnlineAgents === false) {
-        // 没有在线客服，显示提示弹窗
-        Modal.warning({
-          title: '暂无客服在线',
-          content: '当前没有客服在线，您的工单已创建。当有客服上线时，我们会自动为您分配客服。您可以通过工单号查看处理进度。',
-          okText: '我知道了',
-          onOk: () => {
-            // 跳转到工单聊天页面
-            navigate(`/ticket/${ticket.token}`);
-          },
-        });
-      } else {
-        // 有在线客服，创建会话并进入排队页面
-        try {
-          const session = await createSession({ ticketId: resolvedTicketId });
-          // 跳转到排队页面
-          navigate(`/queue/${session.id}`);
-        } catch (error) {
-          console.error('创建会话失败:', error);
-          // 如果创建会话失败，仍然跳转到工单聊天页面
+      // 无论创建工单时是否有在线客服，都尝试创建会话
+      // 后端会在 transferToAgent 时实时检查在线客服状态
+      try {
+        const session = await createSession({ ticketId: resolvedTicketId });
+        // 跳转到排队页面（如果无在线客服，后端会转为工单）
+        navigate(`/queue/${session.id}`);
+      } catch (error: any) {
+        console.error('创建会话失败:', error);
+        // 如果创建会话失败，检查是否是"无在线客服"的情况
+        const errorMessage = error?.response?.data?.message || error?.message || '';
+        if (errorMessage.includes('暂无客服在线') || errorMessage.includes('没有在线客服')) {
+          Modal.warning({
+            title: '暂无客服在线',
+            content: '当前没有客服在线，您的工单已创建。当有客服上线时，我们会自动为您分配客服。您可以通过工单号查看处理进度。',
+            okText: '我知道了',
+            onOk: () => {
+              // 跳转到工单聊天页面
+              navigate(`/ticket/${ticket.token}`);
+            },
+          });
+        } else {
+          // 其他错误，跳转到工单聊天页面
           navigate(`/ticket/${ticket.token}`);
         }
       }

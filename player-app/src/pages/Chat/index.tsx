@@ -3,8 +3,8 @@
  */
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Input, Button, Spin, Modal, Rate } from 'antd';
-import { SendOutlined, CustomerServiceOutlined, PoweroffOutlined, CloseOutlined } from '@ant-design/icons';
+import { Input, Button, Spin, Modal, Rate, Tag } from 'antd';
+import { SendOutlined, CustomerServiceOutlined, PoweroffOutlined, CloseOutlined, HomeOutlined } from '@ant-design/icons';
 import { io } from 'socket.io-client';
 import { getSession, transferToAgent, closeSession, submitRating } from '../../services/session.service';
 import type { TransferToAgentPayload } from '../../services/session.service';
@@ -92,6 +92,23 @@ const ChatPage = () => {
       console.log('WebSocket 连接成功');
       setWsConnected(true);
       socket.emit('join-session', { sessionId });
+      
+      // 设置心跳检测
+      const heartbeatInterval = setInterval(() => {
+        if (socket.connected) {
+          socket.emit('ping');
+        }
+      }, 20000); // 每20秒发送一次心跳
+
+      // 监听 pong 响应
+      socket.on('pong', () => {
+        // 心跳正常
+      });
+
+      // 清理心跳定时器
+      socket.on('disconnect', () => {
+        clearInterval(heartbeatInterval);
+      });
     });
 
     socket.on('connect_error', (error) => {
@@ -130,6 +147,19 @@ const ChatPage = () => {
         messageApi.info('会话已结束');
       }
       // 不跳转页面，保持在聊天界面显示排队状态
+    });
+
+    // 监听工单状态更新
+    socket.on('ticket-update', (ticketData: any) => {
+      console.log('工单更新:', ticketData);
+      // 重新加载会话以获取最新状态
+      if (sessionId) {
+        getSession(sessionId).then((updatedSession) => {
+          setSession(updatedSession);
+        }).catch((error) => {
+          console.error('重新加载会话失败:', error);
+        });
+      }
     });
 
     socket.on('error', (error) => {
@@ -520,6 +550,20 @@ const ChatPage = () => {
     (session?.queuePosition !== null && session?.queuePosition !== undefined);
   const issueTypeOptions = session?.ticket?.issueTypes || [];
 
+  // 获取工单状态显示
+  const getTicketStatusInfo = () => {
+    if (!session?.ticket) return null;
+    const status = session.ticket.status;
+    const statusMap: Record<string, { text: string; color: string }> = {
+      WAITING: { text: '待人工', color: 'orange' },
+      IN_PROGRESS: { text: '处理中', color: 'blue' },
+      RESOLVED: { text: '已解决', color: 'green' },
+    };
+    return statusMap[status] || null;
+  };
+
+  const ticketStatusInfo = getTicketStatusInfo();
+
   // 根据最新会话信息同步排队状态
   useEffect(() => {
     if (session?.queuePosition !== undefined) {
@@ -711,6 +755,44 @@ const ChatPage = () => {
     };
   }, []);
 
+  // 监听页面关闭/刷新事件，自动结束会话
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 只有在客服已接入或排队中时才需要结束会话
+      if (session?.status === 'IN_PROGRESS' || session?.status === 'QUEUED') {
+        // 使用 sendBeacon 发送请求，确保在页面关闭时也能发送
+        try {
+          // sendBeacon 需要发送正确的请求格式
+          const url = `${API_BASE_URL}/sessions/${sessionId}/close-player`;
+          const success = navigator.sendBeacon(url, '');
+          if (!success) {
+            // 如果 sendBeacon 失败，尝试使用 fetch（同步）
+            fetch(url, {
+              method: 'PATCH',
+              keepalive: true,
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }).catch(() => {
+              // 忽略错误，因为页面正在关闭
+            });
+          }
+        } catch (error) {
+          console.error('发送结束会话请求失败:', error);
+        }
+      }
+    };
+
+    // 监听页面卸载事件
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [sessionId, session?.status]);
+
   if (!session) {
     return (
       <div className="chat-loading-container">
@@ -745,6 +827,23 @@ const ChatPage = () => {
             </div>
           </div>
           <div className="header-actions">
+            {session?.ticket && (
+              <>
+                <Button
+                  type="text"
+                  icon={<HomeOutlined />}
+                  onClick={() => navigate('/')}
+                  className="header-home-btn"
+                >
+                  返回主页
+                </Button>
+                {ticketStatusInfo && (
+                  <Tag color={ticketStatusInfo.color} className="header-status-tag">
+                    {ticketStatusInfo.text}
+                  </Tag>
+                )}
+              </>
+            )}
             <Button
               type="text"
               icon={<CloseOutlined />}
@@ -831,7 +930,8 @@ const ChatPage = () => {
                 转人工
               </Button>
             )}
-            {isAgentMode && (
+            {/* 客服模式或排队中时显示结束按钮 */}
+            {(isAgentMode || isQueued) && (
               <Button
                 size="small"
                 icon={<PoweroffOutlined />}
@@ -839,7 +939,7 @@ const ChatPage = () => {
                 onClick={handleCloseChat}
                 disabled={transferring}
               >
-                结束
+                结束会话
               </Button>
             )}
           </div>

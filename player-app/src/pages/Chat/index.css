@@ -126,6 +126,27 @@
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.header-home-btn {
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  font-size: 13px;
+}
+
+.header-home-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.header-status-tag {
+  margin: 0;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .header-close-btn {

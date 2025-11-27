@@ -845,8 +845,30 @@ export class TicketService {
         },
       });
 
+      // 如果没有在线客服，检查是否有在线管理员
+      let candidatePool = [...onlineAgents];
       if (onlineAgents.length === 0) {
-        return; // 没有在线客服，不分配
+        const onlineAdmins = await this.prisma.user.findMany({
+          where: {
+            role: 'ADMIN',
+            isOnline: true,
+            deletedAt: null,
+          },
+          include: {
+            sessions: {
+              where: {
+                status: {
+                  in: ['QUEUED', 'IN_PROGRESS'],
+                },
+              },
+            },
+          },
+        });
+        candidatePool = onlineAdmins;
+      }
+
+      if (candidatePool.length === 0) {
+        return; // 没有在线客服或管理员，不分配
       }
 
       // 为每个工单找到最合适的客服（负载均衡 + 最早登录优先）
@@ -866,8 +888,8 @@ export class TicketService {
             continue; // 已有活跃会话，跳过
           }
 
-          // 计算每个客服的负载和登录时间
-          const agentsWithLoad = onlineAgents.map((agent) => ({
+          // 计算每个客服/管理员的负载和登录时间
+          const agentsWithLoad = candidatePool.map((agent) => ({
             agent,
             load: agent.sessions.length,
             loginTime: agent.lastLoginAt || agent.createdAt,
@@ -980,8 +1002,8 @@ export class TicketService {
         return; // 已有活跃会话，跳过
       }
 
-      // 计算每个客服的负载和登录时间
-      const agentsWithLoad = onlineAgents.map((agent) => ({
+      // 计算每个客服/管理员的负载和登录时间
+      const agentsWithLoad = candidatePool.map((agent) => ({
         agent,
         load: agent.sessions.length,
         loginTime: agent.lastLoginAt || agent.createdAt,

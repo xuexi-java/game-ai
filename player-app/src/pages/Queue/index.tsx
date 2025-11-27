@@ -172,12 +172,6 @@ const QueuePage = () => {
             预计等待时间: <strong style={{ color: '#52c41a', fontSize: '18px' }}>{formatWaitTime(session.estimatedWaitTime)}</strong>
           </Paragraph>
         )}
-        
-        {session.priorityScore && (
-          <Paragraph type="secondary" style={{ marginTop: '16px', fontSize: '14px' }}>
-            优先级评分: {session.priorityScore.toFixed(2)}
-          </Paragraph>
-        )}
       </Card>
     </div>
   );

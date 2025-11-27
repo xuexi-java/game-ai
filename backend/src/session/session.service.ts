@@ -443,7 +443,7 @@ export class SessionService {
     return allSessions;
   }
 
-  // 会话列表（管理端/客服�?
+  // 会话列表（管理端/客服端）
   async findAll(
     query: {
       status?: SessionStatus;
@@ -571,15 +571,15 @@ export class SessionService {
     };
   }
 
-  // 瀹㈡湇鎺ュ叆浼氳瘽
+  // 客服接入会话
   async joinSession(sessionId: string, agentId: string) {
     const session = await this.findOne(sessionId);
 
     if (session.status !== 'QUEUED' && session.status !== 'PENDING') {
-      throw new BadRequestException('浼氳瘽鐘舵€佷笉鍏佽鎺ュ叆');
+      throw new BadRequestException('会话状态不正确，无法接入');
     }
 
-    // 鏇存柊浼氳瘽鐘舵€?
+    // 更新会话状态
     const updatedSession = await this.prisma.session.update({
       where: { id: sessionId },
       data: {
@@ -593,19 +593,37 @@ export class SessionService {
             ...TICKET_RELATION_INCLUDE,
           },
         },
+        agent: {
+          select: {
+            id: true,
+            username: true,
+            realName: true,
+          },
+        },
         messages: {
           orderBy: { createdAt: 'asc' },
         },
       },
     });
 
-    // 更新客服在线状态
+    // 更新用户在线状态
     await this.prisma.user.update({
       where: { id: agentId },
       data: { isOnline: true },
     });
 
     const normalizedSession = this.enrichSession(updatedSession);
+
+    // 更新关联工单的状态为"处理中"（如果会话状态为 IN_PROGRESS）
+    if (normalizedSession.status === 'IN_PROGRESS' && normalizedSession.ticketId) {
+      try {
+        // 更新工单状态为处理中
+        await this.ticketService.updateStatus(normalizedSession.ticketId, 'IN_PROGRESS');
+      } catch (error) {
+        console.error('更新工单状态失败:', error);
+        // 不抛出错误，避免影响会话接入流程
+      }
+    }
 
     // 通知 WebSocket 客户端
     this.websocketGateway.notifySessionUpdate(sessionId, normalizedSession);
@@ -799,21 +817,28 @@ export class SessionService {
     return normalizedSession;
   }
 
-  // 转人工（步骤5：智能分流）- 默认自动分配
-  async transferToAgent(sessionId: string, transferDto: TransferToAgentDto) {
-    // 只有当玩家明确选择转人工时才执行
-    // 检查是否有在线客服
-    const onlineAgents = await this.prisma.user.count({
-      where: {
-        role: 'AGENT',
-        isOnline: true,
-        deletedAt: null,
-      },
-    });
+    // 转人工（步骤5：智能分流）- 默认自动分配
+    async transferToAgent(sessionId: string, transferDto: TransferToAgentDto) {
+      // 只有当玩家明确选择转人工时才执行
+      // 检查是否有在线客服或管理员
+      const onlineAgents = await this.prisma.user.count({
+        where: {
+          role: 'AGENT',
+          isOnline: true,
+          deletedAt: null,
+        },
+      });
+      const onlineAdmins = await this.prisma.user.count({
+        where: {
+          role: 'ADMIN',
+          isOnline: true,
+          deletedAt: null,
+        },
+      });
 
-    const priorityScore = await this.calculatePriorityScore(sessionId);
+      const priorityScore = await this.calculatePriorityScore(sessionId);
 
-    const noAgentsOnline = onlineAgents === 0;
+      const noAgentsOnline = onlineAgents === 0 && onlineAdmins === 0;
 
     // 获取会话和工单信息
     const session = await this.prisma.session.findUnique({
@@ -875,7 +900,7 @@ export class SessionService {
     }
 
     // 有在线客服：正常进入排队流程
-    // 但需要再次确认在线客服数量（可能在这期间客服下线了）
+    // 但需要再次确认在线客服或管理员数量（可能在这期间客服下线了）
     const currentOnlineAgents = await this.prisma.user.count({
       where: {
         role: 'AGENT',
@@ -883,9 +908,16 @@ export class SessionService {
         deletedAt: null,
       },
     });
+    const currentOnlineAdmins = await this.prisma.user.count({
+      where: {
+        role: 'ADMIN',
+        isOnline: true,
+        deletedAt: null,
+      },
+    });
 
-    // 如果此时没有在线客服了，转为工单
-    if (currentOnlineAgents === 0) {
+    // 如果此时没有在线客服或管理员了，转为工单
+    if (currentOnlineAgents === 0 && currentOnlineAdmins === 0) {
       // 更新工单为加急状态
       await this.ticketService.updateStatus(session.ticketId, 'WAITING');
       await this.prisma.ticket.update({
@@ -979,13 +1011,21 @@ export class SessionService {
         : 0;
 
     // 计算预计等待时间（分钟）
-    // 公式：预计等待时间 = (前面排队人数 / 在线客服数量) * 平均处理时间
-    // 平均处理时间默认5分钟
     const averageProcessingTime = 5;
-    const estimatedWaitTime =
-      queuePosition && queuePosition > 0 && onlineAgentsCount > 0
-        ? Math.ceil((queuePosition / onlineAgentsCount) * averageProcessingTime)
-        : null;
+    let estimatedWaitTime: number | null = null;
+    
+    if (queuePosition && queuePosition > 0) {
+      if (finalSession.agentId) {
+        // 如果已分配客服，预计等待时间 = 在该客服队列中的位置 * 平均处理时间
+        estimatedWaitTime = Math.ceil(queuePosition * averageProcessingTime);
+      } else {
+        // 如果未分配，预计等待时间 = (前面排队人数 / 在线客服数量) * 平均处理时间
+        estimatedWaitTime =
+          onlineAgentsCount > 0
+            ? Math.ceil((queuePosition / onlineAgentsCount) * averageProcessingTime)
+            : null;
+      }
+    }
 
     return {
       queued: finalSession.status === 'QUEUED',
@@ -1067,15 +1107,40 @@ export class SessionService {
 
   // 重新排序队列（公开方法，供其他服务调用）
   async reorderQueue() {
-    const queuedSessions = await this.prisma.session.findMany({
-      where: { status: 'QUEUED' },
+    // 按分配的客服分组处理排队位置
+    // 1. 获取所有已分配客服的排队会话，按客服分组
+    const assignedSessions = await this.prisma.session.findMany({
+      where: { 
+        status: 'QUEUED',
+        agentId: { not: null },
+      },
       orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
     });
 
-    // 获取在线客服数量
+    // 按客服ID分组
+    const sessionsByAgent = new Map<string, typeof assignedSessions>();
+    for (const session of assignedSessions) {
+      if (session.agentId) {
+        if (!sessionsByAgent.has(session.agentId)) {
+          sessionsByAgent.set(session.agentId, []);
+        }
+        sessionsByAgent.get(session.agentId)!.push(session);
+      }
+    }
+
+    // 2. 获取未分配的排队会话
+    const unassignedSessions = await this.prisma.session.findMany({
+      where: { 
+        status: 'QUEUED',
+        agentId: null,
+      },
+      orderBy: [{ priorityScore: 'desc' }, { queuedAt: 'asc' }],
+    });
+
+    // 获取在线客服数量（包括管理员）
     const onlineAgentsCount = await this.prisma.user.count({
       where: {
-        role: 'AGENT',
+        role: { in: ['AGENT', 'ADMIN'] },
         isOnline: true,
         deletedAt: null,
       },
@@ -1084,11 +1149,33 @@ export class SessionService {
     // 计算平均处理时间（分钟），默认5分钟
     const averageProcessingTime = 5;
 
-    // 更新排队位置并发送 WebSocket 通知
-    for (let i = 0; i < queuedSessions.length; i++) {
+    // 3. 更新已分配会话的排队位置（按客服分组计算）
+    for (const [agentId, sessions] of sessionsByAgent.entries()) {
+      for (let i = 0; i < sessions.length; i++) {
+        const queuePosition = i + 1; // 在该客服的队列中的位置
+        await this.prisma.session.update({
+          where: { id: sessions[i].id },
+          data: { queuePosition },
+        });
+
+        // 计算预计等待时间（分钟）
+        // 对于已分配的会话，预计等待时间 = 在该客服队列中的位置 * 平均处理时间
+        const estimatedWaitTime = Math.ceil(queuePosition * averageProcessingTime);
+
+        // 发送 WebSocket 通知
+        this.websocketGateway.notifyQueueUpdate(
+          sessions[i].id,
+          queuePosition,
+          estimatedWaitTime,
+        );
+      }
+    }
+
+    // 4. 更新未分配会话的排队位置（全局排名）
+    for (let i = 0; i < unassignedSessions.length; i++) {
       const queuePosition = i + 1;
       await this.prisma.session.update({
-        where: { id: queuedSessions[i].id },
+        where: { id: unassignedSessions[i].id },
         data: { queuePosition },
       });
 
@@ -1102,14 +1189,14 @@ export class SessionService {
 
       // 发送 WebSocket 通知
       this.websocketGateway.notifyQueueUpdate(
-        queuedSessions[i].id,
+        unassignedSessions[i].id,
         queuePosition,
         estimatedWaitTime,
       );
     }
   }
 
-  // 鑾峰彇鎺掗槦浣嶇疆
+  // 获取排队位置（按分配的客服计算排名）
   private async getQueuePosition(sessionId: string): Promise<number> {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
@@ -1117,9 +1204,32 @@ export class SessionService {
 
     if (!session || !session.queuedAt) return 0;
 
+    // 如果已经分配了客服，只计算该客服的排队位置
+    if (session.agentId) {
+      const aheadCount = await this.prisma.session.count({
+        where: {
+          status: 'QUEUED',
+          agentId: session.agentId, // 只计算分配给同一客服的会话
+          OR: [
+            { priorityScore: { gt: session.priorityScore } },
+            {
+              AND: [
+                { priorityScore: session.priorityScore },
+                { queuedAt: { lt: session.queuedAt } },
+              ],
+            },
+          ],
+        },
+      });
+
+      return aheadCount + 1;
+    }
+
+    // 如果还没有分配客服，计算全局排名
     const aheadCount = await this.prisma.session.count({
       where: {
         status: 'QUEUED',
+        agentId: null, // 只计算未分配的会话
         OR: [
           { priorityScore: { gt: session.priorityScore } },
           {

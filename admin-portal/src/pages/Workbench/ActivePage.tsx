@@ -170,7 +170,10 @@ const ActivePage: React.FC = () => {
       ?.map((item) => item.issueType?.name)
       .filter((name): name is string => Boolean(name)) ?? [];
 
-  const ticketIssueTypes = ticketInfo?.issueTypes?.map((it) => it.name) ?? fallbackIssueTypes;
+  // 获取问题类型：优先使用 issueTypes，如果没有则使用 ticketIssueTypes
+  const ticketIssueTypes = ticketInfo?.issueTypes?.map((it) => it.name) ?? 
+    (ticketInfo?.ticketIssueTypes?.map((item: any) => item.issueType?.name).filter(Boolean) ?? []) ??
+    fallbackIssueTypes;
 
   useEffect(() => {
     let mounted = true;
@@ -690,10 +693,15 @@ const ActivePage: React.FC = () => {
         setCurrentSession(enrichedSession);
         currentSessionRef.current = enrichedSession;
         
-        // 更新会话列表中的会话
+        // 更新会话列表中的会话（包含 agent 信息）
         updateSession(session.id, {
           status: 'IN_PROGRESS',
           agentId: updatedSession.agentId || authUser?.id,
+          agent: updatedSession.agent || (authUser ? {
+            id: authUser.id,
+            username: authUser.username,
+            realName: authUser.realName,
+          } : null),
         });
         
         // 加载消息
@@ -1003,15 +1011,22 @@ const ActivePage: React.FC = () => {
       : '等待系统分配';
 
   const canJoinQueuedSession = (session: Session) => {
-    if (session.status !== 'QUEUED') {
+    if (session.status !== 'QUEUED' && session.status !== 'PENDING') {
       return false;
     }
+    // 如果会话还没有分配客服（agentId 为 null），任何客服或管理员都可以接入
+    if (!session.agentId) {
+      return authUser?.role === 'AGENT' || authUser?.role === 'ADMIN';
+    }
+    // 如果已经分配了客服，只有被分配的客服或管理员可以接入
     const assignedToCurrent = session.agentId === authUser?.id;
     if (authUser?.role === 'AGENT') {
+      // 客服只能接入分配给自己的会话
       return assignedToCurrent;
     }
     if (authUser?.role === 'ADMIN') {
-      return assignedToCurrent;
+      // 管理员可以接入任何会话
+      return true;
     }
     return false;
   };
@@ -1288,14 +1303,18 @@ const ActivePage: React.FC = () => {
                         </div>
                         <div className="session-desc">
                           <span>{session.ticket.game.name}</span>
-                          <span>{session.ticket.server?.name || '未分配'}</span>
-                          <span>{session.ticket.description}</span>
+                          <span>{session.ticket.server?.name || '--'}</span>
+                          <span>
+                            {session.ticket.issueTypes && session.ticket.issueTypes.length > 0
+                              ? session.ticket.issueTypes.map((it: any) => it.name || it).join('、')
+                              : session.ticket.description || '问题未分类'}
+                          </span>
                         </div>
                         <div className="session-extra">
                           当前客服:{' '}
                           {session.agent?.realName ||
                             session.agent?.username ||
-                            '未指派'}
+                            (session.agentId ? '未知客服' : '未指派')}
                         </div>
                         <div className="session-extra">
                           持续: {getSessionDuration(session)}
@@ -1650,9 +1669,9 @@ const ActivePage: React.FC = () => {
                   <div className="info-value">
                     {ticketIssueTypes.length > 0 ? (
                       <Space size={[4, 4]} wrap>
-                        {currentSession.ticket.issueTypes?.map((issueType: any) => (
-                          <Tag key={issueType.id} color="blue">
-                            {issueType.name}
+                        {ticketIssueTypes.map((issueTypeName: string, index: number) => (
+                          <Tag key={index} color="blue">
+                            {issueTypeName}
                           </Tag>
                         ))}
                       </Space>
