@@ -34,6 +34,18 @@ const QueuePage = () => {
         if (sessionData.status === 'CLOSED') {
           return;
         }
+        
+        // 如果会话状态为 QUEUED 但已分配客服，说明客服已分配但还未接入
+        // 这种情况下，应该显示"客服已分配，等待接入"的提示
+        if (sessionData.status === 'QUEUED' && sessionData.agentId) {
+          console.log('会话已分配客服，等待客服接入:', sessionData);
+        }
+        
+        // 如果会话状态为 IN_PROGRESS，直接跳转到聊天页面
+        if (sessionData.status === 'IN_PROGRESS') {
+          navigate(`/chat/${sessionId}`);
+          return;
+        }
       } catch (error) {
         console.error('加载会话失败:', error);
         messageApi.error('加载会话失败');
@@ -41,6 +53,11 @@ const QueuePage = () => {
     };
 
     loadSession();
+    
+    // 定期刷新会话状态（每3秒检查一次）
+    const intervalId = setInterval(() => {
+      loadSession();
+    }, 3000);
 
     // 连接 WebSocket 监听排队状态
     const newSocket = io(WS_URL, {
@@ -91,6 +108,9 @@ const QueuePage = () => {
 
     return () => {
       newSocket.disconnect();
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
   }, [sessionId, setSession, updateSession, messageApi, navigate, ticketToken]);
 
@@ -121,7 +141,7 @@ const QueuePage = () => {
                   </p>
                 )}
                 <p style={{ marginTop: 8, color: '#666' }}>
-                  客服上线后会第一时间处理，您可以通过工单号查看处理进度。
+                  再次提交区服和游戏ID再次验证时即可查看反馈。
                 </p>
               </div>
             }
@@ -154,12 +174,20 @@ const QueuePage = () => {
   };
 
   // 正常排队状态
+  const isAssigned = session.agentId && session.status === 'QUEUED';
+  
   return (
     <div className="page-container">
       <Card className="page-card fade-in-up" style={{ textAlign: 'center' }}>
         <Spin size="large" style={{ marginBottom: '24px' }} />
         <Title level={3}>正在为您转接人工客服</Title>
-        <Paragraph>请稍候，客服将尽快为您服务...</Paragraph>
+        {isAssigned ? (
+          <Paragraph style={{ color: '#52c41a', fontSize: '16px' }}>
+            客服已分配，等待客服接入中...
+          </Paragraph>
+        ) : (
+          <Paragraph>请稍候，客服将尽快为您服务...</Paragraph>
+        )}
         
         {session.queuePosition && session.queuePosition > 0 && (
           <Paragraph style={{ fontSize: '16px', marginTop: '16px' }}>

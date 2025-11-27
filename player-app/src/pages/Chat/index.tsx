@@ -139,14 +139,19 @@ const ChatPage = () => {
       if (sessionData.status === 'IN_PROGRESS' && sessionData.agentId) {
         // 客服已接入，禁用AI对话
         setAiTyping(false);
+        // 清除排队状态
+        setQueuePosition(null);
+        setEstimatedWait(null);
         messageApi.success('客服已接入，现在可以与客服直接对话');
       }
       // 当会话关闭时，提示用户
       if (sessionData.status === 'CLOSED') {
         setAiTyping(false);
+        // 清除排队状态
+        setQueuePosition(null);
+        setEstimatedWait(null);
         messageApi.info('会话已结束');
       }
-      // 不跳转页面，保持在聊天界面显示排队状态
     });
 
     // 监听工单状态更新
@@ -410,7 +415,7 @@ const ChatPage = () => {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span>💬</span>
-                      <span>客服上线后会优先处理您的工单，请耐心等待。</span>
+                      <span>再次提交区服和游戏ID再次验证时即可查看反馈。</span>
                     </div>
                   </div>
                 )}
@@ -537,7 +542,12 @@ const ChatPage = () => {
 
   const canTransfer =
     session && session.status !== 'CLOSED' && session.allowManualTransfer !== false;
-  const isInputDisabled = sending || uploading || transferring || session?.status === 'CLOSED';
+  const isInputDisabled = 
+    sending || 
+    uploading || 
+    transferring || 
+    session?.status === 'CLOSED' || 
+    session?.ticket?.status === 'RESOLVED';
   const showTransferButton = Boolean(
     canTransfer && 
     session?.status !== 'QUEUED' && 

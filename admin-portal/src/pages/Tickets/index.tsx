@@ -141,7 +141,9 @@ const TicketsPage: React.FC = () => {
         endDate: filters.dateRange?.[1]
           ? filters.dateRange[1].endOf('day').format('YYYY-MM-DD')
           : undefined,
-        // 不传递 sortBy 和 sortOrder，使用后端默认排序（按问题类型权重分数降序，相同分数按创建时间升序）
+        // 默认按创建时间倒序排序
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
       });
 
       // 转换后端返回的数据格式，将 ticketIssueTypes 转换为 issueTypes
@@ -424,6 +426,12 @@ const TicketsPage: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 150,
+      sorter: (a, b) => {
+        const timeA = dayjs(a.createdAt).valueOf();
+        const timeB = dayjs(b.createdAt).valueOf();
+        return timeB - timeA; // 倒序：最新的在前
+      },
+      defaultSortOrder: 'descend',
       render: (text) => dayjs(text).format('YYYY-MM-DD HH:mm'),
     },
     {
@@ -478,23 +486,25 @@ const TicketsPage: React.FC = () => {
     },
   };
 
-  const sortedTickets = useMemo(() => {
-    return [...tickets].sort((a, b) => {
-      const statusDiff =
-        (STATUS_ORDER[a.status as TicketStatus] ?? 99) -
-        (STATUS_ORDER[b.status as TicketStatus] ?? 99);
-      if (statusDiff !== 0) {
-        return statusDiff;
-      }
+  // 移除前端排序，使用表格列的排序功能
+  // 如果需要在初始加载时按创建时间倒序，可以在后端查询时设置 sortBy 和 sortOrder
+  // const sortedTickets = useMemo(() => {
+  //   return [...tickets].sort((a, b) => {
+  //     const statusDiff =
+  //       (STATUS_ORDER[a.status as TicketStatus] ?? 99) -
+  //       (STATUS_ORDER[b.status as TicketStatus] ?? 99);
+  //     if (statusDiff !== 0) {
+  //       return statusDiff;
+  //     }
 
-      const scoreDiff = (b.priorityScore ?? 0) - (a.priorityScore ?? 0);
-      if (scoreDiff !== 0) {
-        return scoreDiff;
-      }
+  //     const scoreDiff = (b.priorityScore ?? 0) - (a.priorityScore ?? 0);
+  //     if (scoreDiff !== 0) {
+  //       return scoreDiff;
+  //     }
 
-      return dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf();
-    });
-  }, [tickets]);
+  //     return dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf();
+  //   });
+  // }, [tickets]);
 
   return (
     <div className="tickets-container">
@@ -598,7 +608,7 @@ const TicketsPage: React.FC = () => {
         {/* 工单表格 */}
         <Table
           columns={columns}
-          dataSource={sortedTickets}
+          dataSource={tickets}
           rowKey="id"
           loading={loading}
           pagination={paginationConfig}

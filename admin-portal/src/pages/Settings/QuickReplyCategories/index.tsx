@@ -220,6 +220,12 @@ const QuickReplyCategoriesPage: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
+      sorter: (a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return timeB - timeA; // 倒序：最新的在前
+      },
+      defaultSortOrder: 'descend',
       render: (text: string) => new Date(text).toLocaleString('zh-CN'),
     },
     {

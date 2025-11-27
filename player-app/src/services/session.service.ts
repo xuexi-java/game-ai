@@ -57,6 +57,21 @@ export const closeSession = async (sessionId: string): Promise<Session> => {
   return apiClient.patch(`/sessions/${sessionId}/close-player`, {});
 };
 
+/**
+ * 通过工单ID查找活跃会话
+ */
+export const getActiveSessionByTicket = async (ticketId: string): Promise<Session | null> => {
+  try {
+    return await apiClient.get(`/sessions/by-ticket/${ticketId}/active`);
+  } catch (error: any) {
+    // 如果没有找到活跃会话，返回 null
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 export interface SubmitRatingRequest {
   sessionId: string;
   rating: number;
