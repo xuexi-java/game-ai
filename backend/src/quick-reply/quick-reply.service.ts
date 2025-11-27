@@ -155,15 +155,32 @@ export class QuickReplyService {
    */
   async getReplies(userId: string, isAdmin: boolean, query: QueryReplyDto) {
     try {
+      // 调试日志：打印接收到的查询参数
+      console.log('getReplies 接收到的查询参数:', JSON.stringify(query, null, 2));
+      
       const page = query.page ?? 1;
       const pageSize = query.pageSize ?? 20;
       const skip = (page - 1) * pageSize;
 
       // 构建 WHERE 条件
       const where: any = {
-        isActive: true,
         deletedAt: null,
       };
+
+      // 启用状态筛选：
+      // - 如果明确指定了 isActive (true/false)，使用指定值
+      // - 如果 isActive 为 null，查询所有状态的回复（全部）
+      // - 如果 isActive 为 undefined，默认只查询启用的回复（保持向后兼容，用于其他地方的调用）
+      if (query.isActive === null) {
+        // 用户选择"全部"，不添加 isActive 条件，查询所有状态的回复
+        // 不设置 where.isActive，查询所有
+      } else if (query.isActive !== undefined) {
+        // 明确指定了 true 或 false
+        where.isActive = query.isActive;
+      } else {
+        // undefined 表示默认行为（保持向后兼容），只查询启用的
+        where.isActive = true;
+      }
 
       if (query.categoryId) {
         where.categoryId = query.categoryId;
@@ -298,16 +315,45 @@ export class QuickReplyService {
         });
       }
 
+      // 后端去重：根据 id 和内容双重去重，确保不会返回重复数据
+      const uniqueRepliesById = new Map();
+      sortedData.forEach((reply) => {
+        if (!uniqueRepliesById.has(reply.id)) {
+          uniqueRepliesById.set(reply.id, reply);
+        }
+      });
+      let deduplicatedData = Array.from(uniqueRepliesById.values());
+
+      // 根据内容去重（防止数据库中有相同内容但不同 id 的重复数据）
+      const uniqueRepliesByContent = new Map();
+      deduplicatedData.forEach((reply) => {
+        const contentKey = (reply.content || '').trim();
+        if (!uniqueRepliesByContent.has(contentKey)) {
+          uniqueRepliesByContent.set(contentKey, reply);
+        } else {
+          // 保留使用次数更高的，如果使用次数相同，保留 id 更小的（更早创建的）
+          const existing = uniqueRepliesByContent.get(contentKey);
+          if (reply.usageCount > existing.usageCount) {
+            uniqueRepliesByContent.set(contentKey, reply);
+          } else if (reply.usageCount === existing.usageCount && reply.id < existing.id) {
+            uniqueRepliesByContent.set(contentKey, reply);
+          }
+        }
+      });
+      deduplicatedData = Array.from(uniqueRepliesByContent.values());
+
+      console.log('后端去重：去重前数量:', sortedData.length, '去重后数量:', deduplicatedData.length);
+
       return {
-        data: sortedData.map((reply) => ({
+        data: deduplicatedData.map((reply) => ({
           ...reply,
           isFavorited: favoriteIdsSet.has(reply.id),
         })),
         pagination: {
-          total,
+          total: deduplicatedData.length, // 使用去重后的数量
           page,
           pageSize,
-          totalPages: Math.ceil(total / pageSize),
+          totalPages: Math.ceil(deduplicatedData.length / pageSize),
         },
       };
     } catch (error) {
@@ -463,7 +509,13 @@ export class QuickReplyService {
 
     const [data, total] = await Promise.all([
       this.prisma.quickReplyFavorite.findMany({
-        where: { userId },
+        where: { 
+          userId,
+          reply: {
+            isActive: true, // 只返回启用的回复
+            deletedAt: null,
+          },
+        },
         include: {
           reply: {
             include: { category: true },
@@ -473,7 +525,15 @@ export class QuickReplyService {
         skip,
         take: pageSize,
       }),
-      this.prisma.quickReplyFavorite.count({ where: { userId } }),
+      this.prisma.quickReplyFavorite.count({ 
+        where: { 
+          userId,
+          reply: {
+            isActive: true, // 只统计启用的回复
+            deletedAt: null,
+          },
+        },
+      }),
     ]);
 
     return {

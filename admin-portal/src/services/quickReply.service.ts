@@ -33,6 +33,7 @@ interface QueryReplyDto {
   onlyFavorites?: boolean;
   onlyRecent?: boolean;
   sortBy?: 'usageCount' | 'favoriteCount' | 'lastUsedAt';
+  isActive?: boolean | null;
   page?: number;
   pageSize?: number;
 }

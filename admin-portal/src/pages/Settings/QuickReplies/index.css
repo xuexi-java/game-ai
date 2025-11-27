@@ -47,7 +47,10 @@
 .quick-reply-settings .replies-content {
   flex: 1;
   padding: 20px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .quick-reply-settings .content-header {
@@ -55,6 +58,32 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.quick-reply-settings .replies-list-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.quick-reply-settings .replies-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.quick-reply-settings .replies-list-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.quick-reply-settings .replies-list-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.quick-reply-settings .replies-list-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 .quick-reply-settings .content-header h2 {
@@ -74,4 +103,37 @@
 
 .quick-reply-settings .ant-list-item-meta {
   margin-top: 8px;
+}
+
+/* 分类选择器样式 */
+.quick-reply-settings .content-header .ant-form-item {
+  margin-bottom: 0;
+}
+
+.quick-reply-settings .content-header .ant-form-item-label {
+  padding-bottom: 0;
+}
+
+.quick-reply-settings .content-header .ant-form-item-label > label {
+  height: auto;
+  font-weight: 500;
+}
+
+/* 搜索框美化 */
+.quick-reply-settings .ant-input-search {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.quick-reply-settings .ant-input-search:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.quick-reply-settings .ant-input-search.ant-input-search-large .ant-input {
+  border-radius: 6px 0 0 6px;
+}
+
+.quick-reply-settings .ant-input-search.ant-input-search-large .ant-input-search-button {
+  border-radius: 0 6px 6px 0;
 }

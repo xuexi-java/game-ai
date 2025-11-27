@@ -13,36 +13,41 @@
   margin-top: 16px;
 }
 
-.quick-reply-drawer-content .ant-input-search {
-  margin: 16px;
+/* 分类选择器样式 */
+.quick-reply-drawer-content .ant-form-item {
+  margin-bottom: 12px;
 }
 
-.category-list {
-  border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
-  padding: 8px 0;
-  max-height: 200px;
-  overflow-y: auto;
+.quick-reply-drawer-content .ant-form-item-label {
+  padding-bottom: 4px;
+  line-height: 1.5715;
 }
 
-.category-header {
-  padding: 8px 16px;
+.quick-reply-drawer-content .ant-form-item-label > label {
+  height: auto;
   font-weight: 500;
-  color: #666;
-  background: #fafafa;
+  color: #262626;
+  font-size: 14px;
+  display: inline-block;
 }
 
-.category-list .ant-list-item {
-  transition: all 0.2s;
+/* 搜索框美化 */
+.quick-reply-drawer-content .ant-input-search {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
+  transition: all 0.3s;
 }
 
-.category-list .ant-list-item:hover {
-  background: #f5f5f5;
+.quick-reply-drawer-content .ant-input-search:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.category-list .ant-list-item.active {
-  background: #e6f7ff;
-  border-left: 3px solid #1890ff;
+.quick-reply-drawer-content .ant-input-search.ant-input-search-large .ant-input {
+  border-radius: 6px 0 0 6px;
+}
+
+.quick-reply-drawer-content .ant-input-search.ant-input-search-large .ant-input-search-button {
+  border-radius: 0 6px 6px 0;
 }
 
 .reply-list {

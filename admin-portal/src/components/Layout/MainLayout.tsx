@@ -66,6 +66,7 @@ const MainLayout: React.FC = () => {
       key: '/quick-replies',
       icon: <ThunderboltOutlined />,
       label: '快捷回复',
+      visible: !isAdmin, // 管理员不显示，使用系统设置下的快捷回复管理
     },
     {
       key: '/settings',

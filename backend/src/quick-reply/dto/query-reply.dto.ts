@@ -44,6 +44,20 @@ export class QueryReplyDto {
   @IsBoolean({ message: 'onlyRecent must be a boolean value' })
   onlyRecent?: boolean;
 
+  @ApiProperty({ example: true, description: '启用状态筛选：true=启用, false=未启用, null=全部', required: false })
+  @IsOptional()
+  @Transform(({ value }) => {
+    // 处理字符串形式的布尔值
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (value === 'null' || value === null) return null;
+    // 如果已经是布尔值，直接返回
+    if (typeof value === 'boolean') return value;
+    // undefined 或其他值，返回 undefined（保持向后兼容）
+    return undefined;
+  })
+  isActive?: boolean | null;
+
   @ApiProperty({
     enum: SortByEnum,
     example: SortByEnum.USAGE_COUNT,

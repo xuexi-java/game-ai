@@ -10,6 +10,8 @@ import {
   Spin,
   message,
   Tag,
+  Select,
+  Form,
 } from 'antd';
 import {
   HeartOutlined,
@@ -38,6 +40,7 @@ interface Reply {
   favoriteCount: number;
   isFavorited: boolean;
   isGlobal: boolean;
+  isActive: boolean;
 }
 
 interface Category {
@@ -54,7 +57,7 @@ export default function QuickReplyDrawer({
   onSelect,
 }: QuickReplyDrawerProps) {
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'recent'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'usage'>('all');
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -71,14 +74,22 @@ export default function QuickReplyDrawer({
   // 加载快捷回复
   useEffect(() => {
     if (open) {
-      if (selectedCategoryId || activeTab === 'favorites') {
+      // 先清空之前的回复，避免重复显示
+      setReplies([]);
+      
+      if (selectedCategoryId || activeTab === 'favorites' || activeTab === 'usage') {
         loadReplies();
       } else if (categories.length > 0 && !selectedCategoryId) {
         // 如果分类已加载但还没有选中分类，自动选中第一个
         setSelectedCategoryId(categories[0].id);
       }
+    } else {
+      // 关闭抽屉时清空数据
+      setReplies([]);
+      setSearchKeyword('');
     }
-  }, [open, selectedCategoryId, activeTab, categories]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedCategoryId, activeTab]);
 
   const loadCategories = async () => {
     try {
@@ -101,23 +112,65 @@ export default function QuickReplyDrawer({
       if (activeTab === 'favorites') {
         const result = await quickReplyService.getUserFavorites(1, 100);
         data = result.data || [];
-      } else if (activeTab === 'recent') {
+      } else if (activeTab === 'usage') {
+        // 使用频率标签页：按使用次数排序，只查询启用的回复
         const result = await quickReplyService.getReplies({
           categoryId: selectedCategoryId || undefined,
-          sortBy: 'lastUsedAt',
+          sortBy: 'usageCount',
+          isActive: true, // 只查询启用的回复
           pageSize: 100,
         });
         data = result.data || [];
       } else {
+        // 全部标签页：按使用次数排序，只查询启用的回复
         const result = await quickReplyService.getReplies({
           categoryId: selectedCategoryId || undefined,
           sortBy: 'usageCount',
+          isActive: true, // 只查询启用的回复
           pageSize: 100,
         });
         data = result.data || [];
       }
 
-      console.log('加载的快捷回复数据:', data);
+      console.log('加载的快捷回复数据（去重前）:', data);
+      console.log('去重前数量:', data.length);
+
+      // 去重：先根据 id 去重，再根据内容去重（双重保险）
+      const uniqueRepliesById = new Map<string, Reply>();
+      data.forEach((reply: Reply) => {
+        if (!uniqueRepliesById.has(reply.id)) {
+          uniqueRepliesById.set(reply.id, reply);
+        } else {
+          console.warn('发现重复的 id:', reply.id, reply.content);
+        }
+      });
+      data = Array.from(uniqueRepliesById.values());
+
+      // 再次去重：根据内容去重（防止数据库中有相同内容但不同 id 的重复数据）
+      const uniqueRepliesByContent = new Map<string, Reply>();
+      data.forEach((reply: Reply) => {
+        const contentKey = reply.content.trim();
+        if (!uniqueRepliesByContent.has(contentKey)) {
+          uniqueRepliesByContent.set(contentKey, reply);
+        } else {
+          console.warn('发现重复的内容:', reply.id, reply.content);
+          // 保留使用次数更高的
+          const existing = uniqueRepliesByContent.get(contentKey)!;
+          if (reply.usageCount > existing.usageCount) {
+            uniqueRepliesByContent.set(contentKey, reply);
+          }
+        }
+      });
+      data = Array.from(uniqueRepliesByContent.values());
+
+      console.log('去重后数量:', data.length);
+
+      // 过滤：只显示启用的回复（严格过滤）
+      data = data.filter((reply: Reply) => {
+        // 只保留 isActive 明确为 true 的回复
+        // 如果 isActive 是 false、undefined 或 null，都过滤掉
+        return reply.isActive === true;
+      });
 
       // 过滤搜索关键词
       if (searchKeyword.trim()) {
@@ -125,6 +178,9 @@ export default function QuickReplyDrawer({
           reply.content.toLowerCase().includes(searchKeyword.toLowerCase())
         );
       }
+
+      // 确保按使用次数排序（降序）
+      data = data.sort((a: Reply, b: Reply) => b.usageCount - a.usageCount);
 
       setReplies(data);
     } catch (error) {
@@ -136,6 +192,12 @@ export default function QuickReplyDrawer({
   };
 
   const handleSelect = async (reply: Reply) => {
+    // 如果回复已禁用，不允许使用
+    if (reply.isActive === false) {
+      message.warning('该快捷回复已禁用，无法使用');
+      return;
+    }
+    
     try {
       // 增加使用次数
       await quickReplyService.incrementUsage(reply.id);
@@ -171,10 +233,8 @@ export default function QuickReplyDrawer({
 
   const handleSearch = (value: string) => {
     setSearchKeyword(value);
-    // 延迟搜索，避免频繁请求
-    setTimeout(() => {
-      loadReplies();
-    }, 300);
+    // 不需要重新请求，因为已经在 loadReplies 中处理了搜索过滤
+    // 搜索是客户端过滤，不需要延迟请求
   };
 
   return (
@@ -190,42 +250,46 @@ export default function QuickReplyDrawer({
         <Tabs
           activeKey={activeTab}
           onChange={(key) => {
-            setActiveTab(key as 'all' | 'favorites' | 'recent');
+            setActiveTab(key as 'all' | 'favorites' | 'usage');
           }}
           items={[
             { key: 'all', label: '全部' },
             { key: 'favorites', label: '收藏' },
-            { key: 'recent', label: '最近使用' },
+            { key: 'usage', label: '使用频率' },
           ]}
         />
 
-        <Search
-          placeholder="搜索快捷回复..."
-          allowClear
-          onSearch={handleSearch}
-          onChange={(e) => handleSearch(e.target.value)}
-          style={{ marginBottom: 16 }}
-        />
+        <div style={{ padding: '0 16px', marginBottom: 16 }}>
+          <Form.Item 
+            label="分类"
+            style={{ marginBottom: 12 }}
+          >
+            <Select
+              placeholder="选择分类"
+              value={selectedCategoryId || undefined}
+              onChange={(value) => {
+                setSelectedCategoryId(value);
+              }}
+              style={{ width: '100%' }}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={categories.map((cat) => ({
+                label: cat.name,
+                value: cat.id,
+              }))}
+              notFoundContent={categories.length === 0 ? '暂无分类' : undefined}
+            />
+          </Form.Item>
 
-        <div className="category-list">
-          <div className="category-header">分类</div>
-          <List
-            size="small"
-            dataSource={categories}
-            renderItem={(category) => (
-              <List.Item
-                className={selectedCategoryId === category.id ? 'active' : ''}
-                onClick={() => setSelectedCategoryId(category.id)}
-                style={{ cursor: 'pointer', padding: '8px 16px' }}
-              >
-                <Space>
-                  <span>{category.name}</span>
-                  {category._count && (
-                    <Tag size="small">{category._count.replies}</Tag>
-                  )}
-                </Space>
-              </List.Item>
-            )}
+          <Input.Search
+            placeholder="搜索快捷回复..."
+            allowClear
+            onSearch={handleSearch}
+            onChange={(e) => handleSearch(e.target.value)}
+            enterButton
+            size="large"
           />
         </div>
 
