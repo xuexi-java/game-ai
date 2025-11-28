@@ -113,4 +113,12 @@ export class UserController {
   getOnlineAgents() {
     return this.userService.findOnlineAgents();
   }
+
+  // 公共接口：检查是否有在线客服（不需要认证）
+  @Get('agents/check-online')
+  @ApiOperation({ summary: '检查是否有在线客服（公共接口）' })
+  @ApiResponse({ status: 200, description: '返回是否有在线客服' })
+  checkOnlineAgents() {
+    return this.userService.hasOnlineAgents();
+  }
 }

@@ -27,22 +27,38 @@ export class CreateUserDto {
   @IsEnum(UserRole)
   role: UserRole;
 
-  @ApiProperty({ description: '真实姓名（可选）', example: '张三', required: false })
+  @ApiProperty({
+    description: '真实姓名（可选）',
+    example: '张三',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   realName?: string;
 
-  @ApiProperty({ description: '邮箱（可选）', example: 'admin@example.com', required: false })
+  @ApiProperty({
+    description: '邮箱（可选）',
+    example: 'admin@example.com',
+    required: false,
+  })
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @ApiProperty({ description: '手机号（可选）', example: '13800138000', required: false })
+  @ApiProperty({
+    description: '手机号（可选）',
+    example: '13800138000',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiProperty({ description: '头像URL（可选）', example: 'https://example.com/avatar.jpg', required: false })
+  @ApiProperty({
+    description: '头像URL（可选）',
+    example: 'https://example.com/avatar.jpg',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   avatar?: string;
@@ -63,7 +79,12 @@ export class QueryUsersDto {
   @Min(1)
   page: number = 1;
 
-  @ApiProperty({ description: '每页数量', example: 10, required: false, default: 10 })
+  @ApiProperty({
+    description: '每页数量',
+    example: 10,
+    required: false,
+    default: 10,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

@@ -16,4 +16,3 @@ export class CreateQuickReplyGroupDto {
   @IsBoolean()
   enabled?: boolean;
 }
-

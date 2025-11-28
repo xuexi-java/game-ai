@@ -20,10 +20,12 @@ import { TicketMessageModule } from './ticket-message/ticket-message.module';
 import { UserModule } from './user/user.module';
 import { IssueTypeModule } from './issue-type/issue-type.module';
 import { QuickReplyModule } from './quick-reply/quick-reply.module';
+import { LoggerModule } from './common/logger/logger.module';
 import { validate } from './common/config/env.validation';
 
 @Module({
   imports: [
+    LoggerModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
@@ -60,7 +62,6 @@ import { validate } from './common/config/env.validation';
     DashboardModule,
     TicketMessageModule,
     UserModule,
-    IssueTypeModule,
     QuickReplyModule,
   ],
   controllers: [AppController],

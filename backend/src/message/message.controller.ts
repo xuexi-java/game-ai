@@ -42,7 +42,12 @@ export class MessageController {
   @Get('session/:sessionId')
   @ApiOperation({ summary: '获取会话消息（玩家端）' })
   @ApiParam({ name: 'sessionId', description: '会话ID' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: '限制数量' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: '限制数量',
+  })
   @ApiResponse({ status: 200, description: '返回消息列表' })
   findBySession(
     @Param('sessionId') sessionId: string,
@@ -65,6 +70,11 @@ export class MessageController {
     @Body() createMessageDto: CreateMessageDto,
     @CurrentUser() user: any,
   ) {
-    return this.messageService.create(createMessageDto, 'AGENT', user.id);
+    return this.messageService.create(
+      createMessageDto,
+      'AGENT',
+      user.id,
+      user,
+    );
   }
 }

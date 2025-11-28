@@ -122,7 +122,6 @@ const ChatPage = () => {
     });
 
     socket.on('message', (data: any) => {
-      console.log('收到消息:', data);
       // 兼容两种格式：直接是消息对象，或者 { sessionId, message } 格式
       const messageData = data.message || data;
       addMessage(messageData);
@@ -339,12 +338,12 @@ const ChatPage = () => {
           const agentMessages = messages.filter((msg: TicketMessage) => msg.senderId && msg.sender);
 
           Modal.info({
-            title: '当前无客服在线',
+            title: '已收到您的反馈',
             width: 600,
             content: (
               <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 <p style={{ marginBottom: 12 }}>
-                  {result.message || '当前暂无客服在线，您的问题已转为【加急工单】'}
+                  已经接到您的反馈，我们会尽快处理，目前暂时没有人工客服在线。
                 </p>
                 {result.ticketNo && (
                   <p style={{ marginBottom: 12, fontWeight: 'bold', fontSize: '16px' }}>
@@ -422,16 +421,15 @@ const ChatPage = () => {
               </div>
             ),
             okText: '知道了',
-            width: 600,
           });
         } catch (error) {
           console.error('加载工单信息失败:', error);
           // 如果加载失败，显示简化版弹窗
           Modal.info({
-            title: '当前无客服在线',
+            title: '已收到您的反馈',
             content: (
               <div>
-                <p>{result.message || '当前暂无客服在线，您的问题已转为【加急工单】'}</p>
+                <p>已经接到您的反馈，我们会尽快处理，目前暂时没有人工客服在线。</p>
                 {result.ticketNo && (
                   <p style={{ marginTop: 8, fontWeight: 'bold' }}>
                     工单号：{result.ticketNo}
@@ -555,9 +553,8 @@ const ChatPage = () => {
     session?.status !== 'CLOSED' // 已关闭的会话不能转人工
   );
   const isAgentMode = session?.agentId || session?.status === 'IN_PROGRESS';
-  // 只有在有排队位置的情况下才显示排队信息（确保有在线客服）
-  const isQueued = session?.status === 'QUEUED' && 
-    (session?.queuePosition !== null && session?.queuePosition !== undefined);
+  // 如果状态是 QUEUED，说明正在排队（即使 queuePosition 可能暂时为 null）
+  const isQueued = session?.status === 'QUEUED';
   const issueTypeOptions = session?.ticket?.issueTypes || [];
 
   // 获取工单状态显示
@@ -864,18 +861,24 @@ const ChatPage = () => {
         </header>
 
         {/* Queue Banner */}
-        {isQueued && displayQueuePositionValue !== null && (
+        {isQueued && (
           <div className="queue-banner-v3">
             <div className="queue-banner-content">
               <Spin size="small" />
               <span>正在为您转接人工客服...</span>
             </div>
-            <span className="queue-position">
-              第 {displayQueuePositionValue} 位
-              {displayEstimatedWaitValue
-                ? ` · 预计 ${Math.max(displayEstimatedWaitValue, 1)} 分钟`
-                : ''}
-            </span>
+            {displayQueuePositionValue !== null && displayQueuePositionValue > 0 ? (
+              <span className="queue-position">
+                当前排队位置: 第 {displayQueuePositionValue} 位
+                {displayEstimatedWaitValue && displayEstimatedWaitValue > 0
+                  ? ` · 预计等待时间: 约 ${Math.max(displayEstimatedWaitValue, 1)} 分钟`
+                  : ''}
+              </span>
+            ) : (
+              <span className="queue-position">
+                正在排队中，请稍候...
+              </span>
+            )}
           </div>
         )}
 

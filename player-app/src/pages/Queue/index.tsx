@@ -28,6 +28,7 @@ const QueuePage = () => {
     const loadSession = async () => {
       try {
         const sessionData = await getSession(sessionId);
+        console.log('排队页面加载会话:', sessionData);
         setSession(sessionData);
         
         // 如果会话已关闭（转为工单），不需要显示排队信息
@@ -35,15 +36,11 @@ const QueuePage = () => {
           return;
         }
         
-        // 如果会话状态为 QUEUED 但已分配客服，说明客服已分配但还未接入
-        // 这种情况下，应该显示"客服已分配，等待接入"的提示
-        if (sessionData.status === 'QUEUED' && sessionData.agentId) {
-          console.log('会话已分配客服，等待客服接入:', sessionData);
-        }
-        
-        // 如果会话状态为 IN_PROGRESS，直接跳转到聊天页面
+        // 如果会话状态为 IN_PROGRESS，说明客服已接入，立即跳转到聊天页面
         if (sessionData.status === 'IN_PROGRESS') {
-          navigate(`/chat/${sessionId}`);
+          console.log('检测到会话状态为 IN_PROGRESS，跳转到聊天页面');
+          // 立即跳转，使用 replace 避免返回时回到排队页面
+          navigate(`/chat/${sessionId}`, { replace: true });
           return;
         }
       } catch (error) {
@@ -62,10 +59,22 @@ const QueuePage = () => {
     // 连接 WebSocket 监听排队状态
     const newSocket = io(WS_URL, {
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
     });
 
     newSocket.on('connect', () => {
+      console.log('排队页面 WebSocket 已连接，加入会话房间:', sessionId);
       newSocket.emit('join-session', { sessionId });
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('排队页面 WebSocket 已断开连接');
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('排队页面 WebSocket 连接错误:', error);
     });
 
     newSocket.on('queue-update', (data) => {
@@ -78,6 +87,9 @@ const QueuePage = () => {
     });
 
     newSocket.on('session-update', (sessionData) => {
+      console.log('排队页面收到会话更新:', sessionData);
+      // 更新会话状态
+      setSession(sessionData);
       updateSession(sessionData);
       
       // 如果会话已关闭（转为工单），跳转到工单页面
@@ -88,17 +100,16 @@ const QueuePage = () => {
         return;
       }
       
+      // 如果会话状态为 IN_PROGRESS，说明客服已接入，立即跳转到聊天页面
       if (sessionData.status === 'IN_PROGRESS') {
-        // 客服已接入，跳转到聊天页面
-        setTimeout(() => {
-          navigate(`/chat/${sessionId}`);
-        }, 100);
+        console.log('客服已接入，跳转到聊天页面');
+        // 立即跳转，使用 replace 避免返回时回到排队页面
+        navigate(`/chat/${sessionId}`, { replace: true });
       }
     });
 
     // 监听消息（转接人工后可能收到客服消息）
     newSocket.on('message', (data: any) => {
-      console.log('排队页面收到消息:', data);
       // 如果收到消息，说明客服可能已经接入，刷新会话状态
       const messageData = data.message || data;
       if (messageData?.senderType === 'AGENT') {
@@ -189,15 +200,21 @@ const QueuePage = () => {
           <Paragraph>请稍候，客服将尽快为您服务...</Paragraph>
         )}
         
-        {session.queuePosition && session.queuePosition > 0 && (
-          <Paragraph style={{ fontSize: '16px', marginTop: '16px' }}>
-            当前排队位置: <strong style={{ color: '#1890ff', fontSize: '18px' }}>第 {session.queuePosition} 位</strong>
-          </Paragraph>
-        )}
-        
-        {session.estimatedWaitTime && session.estimatedWaitTime > 0 && (
-          <Paragraph style={{ fontSize: '16px', marginTop: '8px' }}>
-            预计等待时间: <strong style={{ color: '#52c41a', fontSize: '18px' }}>{formatWaitTime(session.estimatedWaitTime)}</strong>
+        {/* 显示排队信息：如果有排队位置则显示，否则显示"正在排队中" */}
+        {session.queuePosition !== null && session.queuePosition !== undefined && session.queuePosition > 0 ? (
+          <>
+            <Paragraph style={{ fontSize: '16px', marginTop: '16px' }}>
+              当前排队位置: <strong style={{ color: '#1890ff', fontSize: '18px' }}>第 {session.queuePosition} 位</strong>
+            </Paragraph>
+            {session.estimatedWaitTime !== null && session.estimatedWaitTime !== undefined && session.estimatedWaitTime > 0 && (
+              <Paragraph style={{ fontSize: '16px', marginTop: '8px' }}>
+                预计等待时间: <strong style={{ color: '#52c41a', fontSize: '18px' }}>{formatWaitTime(session.estimatedWaitTime)}</strong>
+              </Paragraph>
+            )}
+          </>
+        ) : (
+          <Paragraph style={{ fontSize: '16px', marginTop: '16px', color: '#666' }}>
+            正在排队中，请稍候...
           </Paragraph>
         )}
       </Card>

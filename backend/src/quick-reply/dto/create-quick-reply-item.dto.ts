@@ -15,4 +15,3 @@ export class CreateQuickReplyItemDto {
   @IsInt()
   sortOrder?: number;
 }
-

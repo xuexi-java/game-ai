@@ -42,7 +42,8 @@ export const getQueuedSessions = async (): Promise<Session[]> => {
  * 获取会话详情
  */
 export const getSessionById = async (id: string): Promise<Session> => {
-  return apiClient.get(`/sessions/${id}`);
+  // 使用管理端API，会自动进行权限检查
+  return apiClient.get(`/sessions/workbench/${id}`);
 };
 
 /**

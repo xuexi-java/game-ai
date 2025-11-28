@@ -119,7 +119,6 @@ const TicketChatPage = () => {
 
     // 接收工单消息
     socket.on('ticket-message', (ticketMsg: TicketMessage) => {
-      console.log('收到工单消息:', ticketMsg);
       const convertedMessage = convertTicketMessageToMessage(ticketMsg);
       
       setMessages((prev) => {

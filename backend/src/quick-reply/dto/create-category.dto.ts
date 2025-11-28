@@ -13,7 +13,11 @@ export class CreateCategoryDto {
   @IsNotEmpty({ message: '分类名称不能为空' })
   name: string;
 
-  @ApiProperty({ example: false, description: '是否为全局分类', required: false })
+  @ApiProperty({
+    example: false,
+    description: '是否为全局分类',
+    required: false,
+  })
   @IsBoolean()
   @IsOptional()
   isGlobal?: boolean;

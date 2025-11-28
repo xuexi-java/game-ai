@@ -58,6 +58,7 @@ export default function QuickReplies() {
     toggleFavorite,
     updateReply,
     createCategory,
+    updateUserPreference,
   } = useQuickReplyStore();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -118,8 +119,21 @@ export default function QuickReplies() {
       }
       
       if (editingReply) {
-        await quickReplyService.updateReply((editingReply as any).id, values);
-        message.success('更新成功');
+        const isCreator = (editingReply as any).creatorId === user?.id;
+        
+        // ✅ 如果是管理员或创建者，更新全局回复
+        // ✅ 如果不是创建者，更新个人偏好（只影响当前用户）
+        if (isAdmin || isCreator) {
+          await quickReplyService.updateReply((editingReply as any).id, values);
+          message.success('更新成功');
+        } else {
+          // ✅ 更新个人偏好（只影响当前用户）
+          // 只更新 content，其他字段（如 categoryId, isGlobal）不能通过个人偏好修改
+          await updateUserPreference((editingReply as any).id, {
+            content: values.content,
+          });
+          message.success('个人偏好已更新');
+        }
       } else {
         // 使用表单中选择的分类，如果没有则使用当前选中的分类
         await quickReplyService.createReply({
@@ -162,8 +176,19 @@ export default function QuickReplies() {
   const handleToggleActive = async (reply: any) => {
     try {
       const newIsActive = !reply.isActive;
-      await updateReply(reply.id, { isActive: newIsActive });
-      message.success(newIsActive ? '已启用' : '已禁用');
+      const isCreator = reply.creatorId === user?.id;
+      
+      // ✅ 如果是管理员或创建者，更新全局状态
+      // ✅ 如果不是创建者，更新个人偏好（只影响当前用户）
+      if (isAdmin || isCreator) {
+        await updateReply(reply.id, { isActive: newIsActive });
+        message.success(newIsActive ? '已启用' : '已禁用');
+      } else {
+        // ✅ 更新个人偏好（只影响当前用户）
+        await updateUserPreference(reply.id, { isActive: newIsActive });
+        message.success(newIsActive ? '已为您启用' : '已为您禁用');
+      }
+      
       // 刷新列表以更新状态
       fetchReplies(currentPage);
     } catch (error: any) {

@@ -25,6 +25,8 @@ interface Reply {
   createdAt: string;
   isFavorited: boolean;
   category: Category;
+  hasPersonalPreference?: boolean; // ✅ 是否有个人偏好
+  creatorId?: string; // ✅ 创建者ID，用于权限判断
 }
 
 interface QuickReplyState {
@@ -62,6 +64,8 @@ interface QuickReplyState {
   createCategory: (data: any) => Promise<void>;
   updateCategory: (categoryId: string, data: any) => Promise<void>;
   deleteCategory: (categoryId: string) => Promise<void>;
+  updateUserPreference: (replyId: string, data: { isActive?: boolean; content?: string }) => Promise<void>;
+  deleteUserPreference: (replyId: string) => Promise<void>;
 }
 
 export const useQuickReplyStore = create<QuickReplyState>((set, get) => ({
@@ -88,7 +92,6 @@ export const useQuickReplyStore = create<QuickReplyState>((set, get) => ({
       set({ categories: data });
       // 自动选择第一个分类（仅在还没有选中分类时）
       if (data && data.length > 0 && !get().selectedCategoryId) {
-        console.log('自动选择第一个分类:', data[0].id);
         set({ selectedCategoryId: data[0].id });
         // 自动加载第一个分类的回复
         setTimeout(() => {
@@ -376,6 +379,26 @@ export const useQuickReplyStore = create<QuickReplyState>((set, get) => ({
       get().fetchCategories();
     } catch (error) {
       console.error('删除分类失败:', error);
+      throw error;
+    }
+  },
+
+  updateUserPreference: async (replyId: string, data: { isActive?: boolean; content?: string }) => {
+    try {
+      await quickReplyService.updateUserPreference(replyId, data);
+      get().fetchReplies(get().currentPage);
+    } catch (error) {
+      console.error('更新个人偏好失败:', error);
+      throw error;
+    }
+  },
+
+  deleteUserPreference: async (replyId: string) => {
+    try {
+      await quickReplyService.deleteUserPreference(replyId);
+      get().fetchReplies(get().currentPage);
+    } catch (error) {
+      console.error('删除个人偏好失败:', error);
       throw error;
     }
   },

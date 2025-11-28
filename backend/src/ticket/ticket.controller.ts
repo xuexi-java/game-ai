@@ -105,8 +105,15 @@ export class TicketController {
   @ApiOperation({ summary: '创建工单' })
   @ApiBody({ type: CreateTicketDto })
   @ApiResponse({ status: 201, description: '创建成功' })
-  create(@Body() createTicketDto: CreateTicketDto) {
-    return this.ticketService.create(createTicketDto);
+  async create(@Body() createTicketDto: CreateTicketDto) {
+    try {
+      return await this.ticketService.create(createTicketDto);
+    } catch (error) {
+      // ✅ 记录详细错误信息
+      console.error('工单创建控制器错误:', error);
+      console.error('请求数据:', JSON.stringify(createTicketDto, null, 2));
+      throw error; // 重新抛出，让异常过滤器处理
+    }
   }
 
   // 玩家端API - 根据token获取工单
@@ -181,8 +188,16 @@ export class TicketController {
   @ApiQuery({ name: 'priority', required: false, description: '优先级' })
   @ApiQuery({ name: 'issueTypeId', required: false, description: '问题类型ID' })
   @ApiQuery({ name: 'gameId', required: false, description: '游戏ID' })
-  @ApiQuery({ name: 'startDate', required: false, description: '开始日期，格式 YYYY-MM-DD' })
-  @ApiQuery({ name: 'endDate', required: false, description: '结束日期，格式 YYYY-MM-DD' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: '开始日期，格式 YYYY-MM-DD',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: '结束日期，格式 YYYY-MM-DD',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: '返回工单列表' })
@@ -198,7 +213,8 @@ export class TicketController {
         priority: query.priority,
         issueTypeId: query.issueTypeId,
         gameId: query.gameId,
-        startDate: startDate && isNaN(startDate.getTime()) ? undefined : startDate,
+        startDate:
+          startDate && isNaN(startDate.getTime()) ? undefined : startDate,
         endDate: endDate && isNaN(endDate.getTime()) ? undefined : endDate,
         page: query.page ? parseInt(query.page) : 1,
         pageSize: query.pageSize ? parseInt(query.pageSize) : 10,
@@ -233,7 +249,10 @@ export class TicketController {
     schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['IN_PROGRESS', 'WAITING', 'RESOLVED'] },
+        status: {
+          type: 'string',
+          enum: ['IN_PROGRESS', 'WAITING', 'RESOLVED'],
+        },
       },
       required: ['status'],
     },

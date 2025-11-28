@@ -483,6 +483,13 @@ const SessionsPage: React.FC = () => {
               allowClear
               style={{ width: 300 }}
               placeholder={['开始日期', '结束日期']}
+              format="YYYY-MM-DD"
+              // 允许选择任意日期范围，不限制天数
+              disabledDate={(current) => {
+                // 不限制未来日期，只限制不能选择今天之后的日期（可选）
+                // return current && current > dayjs().endOf('day');
+                return false; // 允许选择所有日期
+              }}
             />
 
             <Button

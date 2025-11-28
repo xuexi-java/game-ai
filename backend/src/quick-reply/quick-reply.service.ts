@@ -130,11 +130,7 @@ export class QuickReplyService {
   /**
    * 删除分类（软删除）
    */
-  async deleteCategory(
-    categoryId: string,
-    userId: string,
-    isAdmin: boolean,
-  ) {
+  async deleteCategory(categoryId: string, userId: string, isAdmin: boolean) {
     const category = await this.prisma.quickReplyCategory.findUniqueOrThrow({
       where: { id: categoryId },
     });
@@ -155,9 +151,6 @@ export class QuickReplyService {
    */
   async getReplies(userId: string, isAdmin: boolean, query: QueryReplyDto) {
     try {
-      // 调试日志：打印接收到的查询参数
-      console.log('getReplies 接收到的查询参数:', JSON.stringify(query, null, 2));
-      
       const page = query.page ?? 1;
       const pageSize = query.pageSize ?? 20;
       const skip = (page - 1) * pageSize;
@@ -224,8 +217,6 @@ export class QuickReplyService {
       // 构建排序条件
       let orderBy = this.buildOrderBy(query.sortBy);
 
-      console.log('查询条件:', JSON.stringify({ where, orderBy, skip, take: pageSize }, null, 2));
-
       // 查询数据和总数
       let data, total, favoriteIdsSet;
       try {
@@ -262,9 +253,13 @@ export class QuickReplyService {
         console.error('错误代码:', dbError.code);
         console.error('错误消息:', dbError.message);
         console.error('错误堆栈:', dbError.stack);
-        
+
         // 如果是排序问题，尝试使用默认排序
-        if (dbError.code === 'P2009' || dbError.message?.includes('orderBy') || dbError.message?.includes('sort')) {
+        if (
+          dbError.code === 'P2009' ||
+          dbError.message?.includes('orderBy') ||
+          dbError.message?.includes('sort')
+        ) {
           console.log('检测到排序错误，尝试使用默认排序...');
           orderBy = { createdAt: 'desc' };
           [data, total, favoriteIdsSet] = await Promise.all([
@@ -300,18 +295,25 @@ export class QuickReplyService {
 
       // 如果按 lastUsedAt 排序，对结果进行二次排序（将 null 值排在最后）
       let sortedData = data;
-      if (query.sortBy === 'lastUsedAt' || query.sortBy === SortByEnum.LAST_USED_AT) {
+      if (
+        query.sortBy === 'lastUsedAt' ||
+        query.sortBy === SortByEnum.LAST_USED_AT
+      ) {
         sortedData = [...data].sort((a, b) => {
           // 如果两个都是 null，按 createdAt 排序
           if (!a.lastUsedAt && !b.lastUsedAt) {
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            return (
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
           }
           // 如果 a 是 null，排在后面
           if (!a.lastUsedAt) return 1;
           // 如果 b 是 null，排在后面
           if (!b.lastUsedAt) return -1;
           // 两个都不是 null，按 lastUsedAt 排序
-          return new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime();
+          return (
+            new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
+          );
         });
       }
 
@@ -335,20 +337,60 @@ export class QuickReplyService {
           const existing = uniqueRepliesByContent.get(contentKey);
           if (reply.usageCount > existing.usageCount) {
             uniqueRepliesByContent.set(contentKey, reply);
-          } else if (reply.usageCount === existing.usageCount && reply.id < existing.id) {
+          } else if (
+            reply.usageCount === existing.usageCount &&
+            reply.id < existing.id
+          ) {
             uniqueRepliesByContent.set(contentKey, reply);
           }
         }
       });
       deduplicatedData = Array.from(uniqueRepliesByContent.values());
 
-      console.log('后端去重：去重前数量:', sortedData.length, '去重后数量:', deduplicatedData.length);
+      // ✅ 获取用户个人偏好（添加错误处理，避免表不存在时导致 500 错误）
+      let userPreferences: any[] = [];
+      let preferenceMap = new Map<
+        string,
+        { replyId: string; isActive: boolean | null; content: string | null }
+      >();
+      
+      try {
+        userPreferences = await (this.prisma as any).quickReplyUserPreference.findMany({
+          where: { userId },
+          select: {
+            replyId: true,
+            isActive: true,
+            content: true,
+          },
+        });
+        
+        preferenceMap = new Map(
+          userPreferences.map((pref: any) => [pref.replyId, pref])
+        );
+      } catch (error) {
+        // ✅ 如果查询个人偏好失败（表不存在等），记录警告但不影响主流程
+        console.warn('查询用户个人偏好失败，使用全局设置:', error);
+        // preferenceMap 保持为空 Map，所有回复使用全局设置
+      }
 
       return {
-        data: deduplicatedData.map((reply) => ({
-          ...reply,
-          isFavorited: favoriteIdsSet.has(reply.id),
-        })),
+        data: deduplicatedData.map((reply) => {
+          const preference = preferenceMap.get(reply.id);
+
+          // ✅ 合并个人偏好：如果用户有个人偏好，使用个人偏好；否则使用全局状态
+          return {
+            ...reply,
+            isFavorited: favoriteIdsSet.has(reply.id),
+            // 个人启用状态：如果有个人偏好，使用个人偏好；否则使用全局 isActive
+            isActive: preference?.isActive !== null && preference?.isActive !== undefined
+              ? preference.isActive
+              : reply.isActive,
+            // 个人内容：如果有个人修改的内容，使用个人内容；否则使用全局内容
+            content: preference?.content || reply.content,
+            // 标记是否有个人偏好
+            hasPersonalPreference: !!preference,
+          };
+        }),
         pagination: {
           total: deduplicatedData.length, // 使用去重后的数量
           page,
@@ -412,8 +454,27 @@ export class QuickReplyService {
       where: { id: replyId },
     });
 
-    // ⭐ 权限检查：非管理员只能修改自己创建的回复
+    // ⭐ 权限检查：管理员可以修改所有回复，非管理员只能修改自己创建的回复
+    // 但是，非管理员可以为任何回复设置个人偏好（只影响自己）
     if (!isAdmin && reply.creatorId !== userId) {
+      // ✅ 如果不是管理员且不是创建者，但只是想设置个人偏好，允许
+      // 检查是否只是设置个人偏好（只更新 isActive 或 content，且不更新其他字段）
+      const isPersonalPreference = 
+        (updateReplyDto.isActive !== undefined && Object.keys(updateReplyDto).length === 1) ||
+        (updateReplyDto.content !== undefined && 
+         (Object.keys(updateReplyDto).length === 1 || 
+          (Object.keys(updateReplyDto).length === 2 && 'isActive' in updateReplyDto && 'content' in updateReplyDto))) ||
+        (updateReplyDto.isActive !== undefined && updateReplyDto.content !== undefined && 
+         Object.keys(updateReplyDto).length === 2 && !('isGlobal' in updateReplyDto) && !('categoryId' in updateReplyDto));
+      
+      if (isPersonalPreference) {
+        // ✅ 允许设置个人偏好
+        return this.updateUserPreference(replyId, userId, {
+          isActive: updateReplyDto.isActive,
+          content: updateReplyDto.content,
+        });
+      }
+      
       throw new ForbiddenException('无权修改此回复');
     }
 
@@ -426,6 +487,7 @@ export class QuickReplyService {
       throw new ForbiddenException('仅管理员可修改全局标记');
     }
 
+    // ✅ 管理员或创建者：更新全局回复
     return this.prisma.quickReply.update({
       where: { id: replyId },
       data: updateReplyDto,
@@ -434,13 +496,56 @@ export class QuickReplyService {
   }
 
   /**
-   * 删除快捷回复（软删除）
+   * 更新用户个人偏好
    */
-  async deleteReply(
+  async updateUserPreference(
     replyId: string,
     userId: string,
-    isAdmin: boolean,
+    updateData: { isActive?: boolean; content?: string },
   ) {
+    // 检查回复是否存在
+    await this.prisma.quickReply.findUniqueOrThrow({
+      where: { id: replyId },
+    });
+
+    // 使用 upsert 创建或更新个人偏好
+    return (this.prisma as any).quickReplyUserPreference.upsert({
+      where: {
+        userId_replyId: {
+          userId,
+          replyId,
+        },
+      },
+      create: {
+        userId,
+        replyId,
+        isActive: updateData.isActive,
+        content: updateData.content,
+      },
+      update: {
+        isActive: updateData.isActive !== undefined ? updateData.isActive : undefined,
+        content: updateData.content !== undefined ? updateData.content : undefined,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * 删除用户个人偏好（恢复为全局状态）
+   */
+  async deleteUserPreference(replyId: string, userId: string) {
+    return (this.prisma as any).quickReplyUserPreference.deleteMany({
+      where: {
+        userId,
+        replyId,
+      },
+    });
+  }
+
+  /**
+   * 删除快捷回复（软删除）
+   */
+  async deleteReply(replyId: string, userId: string, isAdmin: boolean) {
     const reply = await this.prisma.quickReply.findUniqueOrThrow({
       where: { id: replyId },
     });
@@ -509,7 +614,7 @@ export class QuickReplyService {
 
     const [data, total] = await Promise.all([
       this.prisma.quickReplyFavorite.findMany({
-        where: { 
+        where: {
           userId,
           reply: {
             isActive: true, // 只返回启用的回复
@@ -525,8 +630,8 @@ export class QuickReplyService {
         skip,
         take: pageSize,
       }),
-      this.prisma.quickReplyFavorite.count({ 
-        where: { 
+      this.prisma.quickReplyFavorite.count({
+        where: {
           userId,
           reply: {
             isActive: true, // 只统计启用的回复

@@ -18,10 +18,7 @@ import {
   HeartFilled,
 } from '@ant-design/icons';
 import { quickReplyService } from '../../services/quickReply.service';
-import { useAuthStore } from '../../stores/authStore';
 import './index.css';
-
-const { Search } = Input;
 
 interface QuickReplyDrawerProps {
   open: boolean;
@@ -41,6 +38,8 @@ interface Reply {
   isFavorited: boolean;
   isGlobal: boolean;
   isActive: boolean;
+  hasPersonalPreference?: boolean; // ✅ 是否有个人偏好
+  creatorId?: string; // ✅ 创建者ID
 }
 
 interface Category {
@@ -56,7 +55,6 @@ export default function QuickReplyDrawer({
   onClose,
   onSelect,
 }: QuickReplyDrawerProps) {
-  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'usage'>('all');
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -323,7 +321,7 @@ export default function QuickReplyDrawer({
                       title={
                         <Space>
                           <span>{reply.category.name}</span>
-                          {reply.isGlobal && <Tag size="small">全局</Tag>}
+                          {reply.isGlobal && <Tag>全局</Tag>}
                         </Space>
                       }
                       description={
@@ -331,8 +329,8 @@ export default function QuickReplyDrawer({
                       }
                     />
                     <div className="reply-stats">
-                      <Tag size="small">使用 {reply.usageCount}</Tag>
-                      <Tag size="small">收藏 {reply.favoriteCount}</Tag>
+                      <Tag>使用 {reply.usageCount}</Tag>
+                      <Tag>收藏 {reply.favoriteCount}</Tag>
                     </div>
                   </List.Item>
                 )}

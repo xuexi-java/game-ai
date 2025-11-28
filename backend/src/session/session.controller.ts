@@ -116,8 +116,16 @@ export class SessionController {
   @ApiQuery({ name: 'gameId', required: false, description: '游戏ID' })
   @ApiQuery({ name: 'search', required: false, description: '搜索关键词' })
   @ApiQuery({ name: 'transferredToAgent', required: false, type: Boolean })
-  @ApiQuery({ name: 'startDate', required: false, description: '开始日期，格式 YYYY-MM-DD' })
-  @ApiQuery({ name: 'endDate', required: false, description: '结束日期，格式 YYYY-MM-DD' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: '开始日期，格式 YYYY-MM-DD',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: '结束日期，格式 YYYY-MM-DD',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: '返回会话列表' })
@@ -133,7 +141,8 @@ export class SessionController {
         agentId: query.agentId,
         gameId: query.gameId,
         search: query.search,
-        startDate: startDate && isNaN(startDate.getTime()) ? undefined : startDate,
+        startDate:
+          startDate && isNaN(startDate.getTime()) ? undefined : startDate,
         endDate: endDate && isNaN(endDate.getTime()) ? undefined : endDate,
         transferredToAgent:
           query.transferredToAgent !== undefined
@@ -146,6 +155,18 @@ export class SessionController {
       },
       user,
     );
+  }
+
+  // 管理端API - 获取会话详情（管理端，需要权限检查）
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT')
+  @Get('workbench/:id')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: '获取会话详情（管理端）' })
+  @ApiParam({ name: 'id', description: '会话ID' })
+  @ApiResponse({ status: 200, description: '返回会话信息' })
+  findOneForWorkbench(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.sessionService.findOne(id, user);
   }
 
   // 管理端API - 客服接入会话
@@ -209,10 +230,7 @@ export class SessionController {
     },
   })
   @ApiResponse({ status: 200, description: '分配成功' })
-  assignSession(
-    @Param('id') id: string,
-    @Body() body: { agentId: string },
-  ) {
+  assignSession(@Param('id') id: string, @Body() body: { agentId: string }) {
     return this.sessionService.assignSession(id, body.agentId);
   }
 

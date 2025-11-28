@@ -51,8 +51,5 @@ export function ApiQueryDescription(
   required = false,
   type: any = String,
 ) {
-  return applyDecorators(
-    ApiQuery({ name, description, required, type }),
-  );
+  return applyDecorators(ApiQuery({ name, description, required, type }));
 }
-

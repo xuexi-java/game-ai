@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import type { User } from '../types';
 import { getCurrentUser, clearUserInfo, requestLogout } from '../services/auth.service';
-import { websocketService } from '../services/websocket.service';
+
+// 延迟导入 websocketService 避免循环依赖
+let websocketServicePromise: Promise<typeof import('../services/websocket.service')> | null = null;
+const getWebSocketService = async () => {
+  if (!websocketServicePromise) {
+    websocketServicePromise = import('../services/websocket.service');
+  }
+  const module = await websocketServicePromise;
+  return module.websocketService;
+};
 
 interface AuthState {
   user: User | null;
@@ -9,7 +18,7 @@ interface AuthState {
   isAuthReady: boolean;
   setUser: (user: User | null) => void;
   logout: () => void;
-  initAuth: () => void;
+  initAuth: () => void | Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -23,9 +32,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     isAuthReady: true,
   }),
   
-  logout: () => {
-    requestLogout().finally(() => {
-      websocketService.disconnect();
+  logout: async () => {
+    requestLogout().finally(async () => {
+      const wsService = await getWebSocketService();
+      wsService.disconnect();
       clearUserInfo();
       set({ 
         user: null, 
@@ -35,7 +45,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
   
-  initAuth: () => {
+  initAuth: async () => {
     const user = getCurrentUser();
     const token = localStorage.getItem('admin_token');
     
@@ -45,7 +55,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: true,
         isAuthReady: true,
       });
-      websocketService.connect(token);
+      const wsService = await getWebSocketService();
+      wsService.connect(token);
     } else {
       set({ 
         user: null, 

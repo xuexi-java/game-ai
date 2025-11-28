@@ -4,9 +4,14 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { LoggerService } from './common/logger/logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new LoggerService(),
+  });
+
+  const logger = app.get(LoggerService);
 
   // 全局验证管道
   app.useGlobalPipes(
@@ -91,9 +96,12 @@ async function bootstrap() {
 
   const port = process.env.PORT || 21001;
   await app.listen(port);
-  const baseUrl = `http://localhost:${port}`;
-  console.log(`🚀 后端服务运行在 ${baseUrl}`);
-  console.log(`📚 Swagger API在线文档: ${baseUrl}/api/v1/docs`);
+  // 使用环境变量或默认值构建 baseUrl（用于日志输出）
+  const host = process.env.HOST || 'localhost';
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+  const baseUrl = `${protocol}://${host}:${port}`;
+  logger.log(`🚀 后端服务运行在 ${baseUrl}`, 'Bootstrap');
+  logger.log(`📚 Swagger API在线文档: ${baseUrl}/api/v1/docs`, 'Bootstrap');
 }
 
 bootstrap();

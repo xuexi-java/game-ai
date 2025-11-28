@@ -85,7 +85,6 @@ class WebSocketService {
 
     // 新会话通知
     this.socket.on('new-session', (session: Session) => {
-      console.log('收到新会话:', session);
       const { queuedSessions, setQueuedSessions } = useSessionStore.getState();
       // 检查是否已存在，避免重复添加
       const exists = queuedSessions.some(s => s.id === session.id);
@@ -103,7 +102,6 @@ class WebSocketService {
 
     // 会话状态更新
     this.socket.on('session-update', (data: Partial<Session> & { sessionId: string }) => {
-      console.log('会话状态更新:', data);
       const { updateSession } = useSessionStore.getState();
       updateSession(data.sessionId, data);
       
@@ -116,7 +114,6 @@ class WebSocketService {
 
     // 接收消息
     this.socket.on('message', (data: { sessionId: string; message: Message } | Message) => {
-      console.log('收到消息:', data);
       const { addMessage, setSessionMessages } = useSessionStore.getState();
       
       let sessionId: string | undefined;

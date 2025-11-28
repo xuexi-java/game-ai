@@ -226,21 +226,90 @@ const IdentityCheckPage = () => {
       // 保存工单信息到 store
       setTicket(resolvedTicketId, ticket.ticketNo, ticket.token);
 
-      // 直接转人工时，后端会自动创建会话并分配客服
-      // 等待一小段时间让后端完成会话创建和分配
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 检查是否有在线客服
+      const hasOnlineAgents = (ticket as any).hasOnlineAgents;
+      const sessionCreated = (ticket as any).sessionCreated;
 
-      // 查询后端是否已创建会话
-      let session = await getActiveSessionByTicket(resolvedTicketId);
-      
-      if (session) {
-        // 后端已创建会话，跳转到排队页面
-        console.log('后端已创建会话，跳转到排队页面:', session.id);
-        navigate(`/queue/${session.id}`);
+      if (!hasOnlineAgents) {
+        // 没有在线客服，显示提示信息
+        Modal.info({
+          title: '已收到您的反馈',
+          content: (
+            <div>
+              <p style={{ marginBottom: 12 }}>
+                已经接到您的反馈，我们会尽快处理，目前暂时没有人工客服在线。
+              </p>
+              {ticket.ticketNo && (
+                <p style={{ marginBottom: 12, fontWeight: 'bold', fontSize: '16px' }}>
+                  工单号：{ticket.ticketNo}
+                </p>
+              )}
+              <p style={{ marginTop: 8, color: '#666' }}>
+                客服上线后会优先处理您的工单，请耐心等待。您可以通过工单号查看处理进度。
+              </p>
+            </div>
+          ),
+          okText: '知道了',
+          onOk: () => {
+            // 跳转到工单页面
+            navigate(`/ticket/${ticket.token}`);
+          },
+        });
+        return;
+      }
+
+      // 有在线客服，检查是否已创建会话
+      if (sessionCreated) {
+        // 优先使用后端返回的会话ID
+        const returnedSessionId = (ticket as any).sessionId;
+        
+        if (returnedSessionId) {
+          // 后端已返回会话ID，直接跳转到排队页面
+          console.log('使用后端返回的会话ID，跳转到排队页面:', returnedSessionId);
+          navigate(`/queue/${returnedSessionId}`);
+        } else {
+          // 如果后端没有返回会话ID，等待后查询
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // 尝试多次查询会话（最多3次，每次间隔500ms）
+          let session = null;
+          for (let i = 0; i < 3; i++) {
+            try {
+              session = await getActiveSessionByTicket(resolvedTicketId);
+              if (session) {
+                break;
+              }
+              // 如果查询不到，等待后重试
+              if (i < 2) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            } catch (error) {
+              console.error(`查询会话失败 (尝试 ${i + 1}/3):`, error);
+            }
+          }
+          
+          if (session) {
+            // 后端已创建会话，跳转到排队页面
+            console.log('找到会话，跳转到排队页面:', session.id);
+            navigate(`/queue/${session.id}`);
+          } else {
+            // 如果查询不到会话，尝试创建会话
+            console.warn('未找到已创建的会话，尝试创建新会话');
+            try {
+              const newSession = await createSession({ ticketId: resolvedTicketId });
+              // 跳转到排队页面
+              navigate(`/queue/${newSession.id}`);
+            } catch (error: any) {
+              console.error('创建会话失败:', error);
+              // 如果创建会话失败，跳转到工单聊天页面
+              navigate(`/ticket/${ticket.token}`);
+            }
+          }
+        }
       } else {
-        // 后端未创建会话（可能没有在线客服），尝试创建会话
+        // 如果后端没有创建会话，尝试创建会话
         try {
-          session = await createSession({ ticketId: resolvedTicketId });
+          const session = await createSession({ ticketId: resolvedTicketId });
           // 跳转到排队页面
           navigate(`/queue/${session.id}`);
         } catch (error: any) {
@@ -337,8 +406,8 @@ const IdentityCheckPage = () => {
               filterOption={(input, option) =>
                 (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
               }
-              onChange={(value) => {
-                console.log('选择的问题类型 ID:', value);
+              onChange={() => {
+                // 问题类型选择处理
               }}
             >
               {issueTypes.map((type) => (

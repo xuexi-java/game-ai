@@ -69,10 +69,7 @@ export class QuickReplyController {
   @ApiOperation({ summary: '删除分类' })
   @Delete('categories/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteCategory(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-  ) {
+  async deleteCategory(@Param('id') id: string, @CurrentUser() user: User) {
     await this.quickReplyService.deleteCategory(
       id,
       user.id,
@@ -84,10 +81,7 @@ export class QuickReplyController {
 
   @ApiOperation({ summary: '获取快捷回复列表' })
   @Get('replies')
-  async getReplies(
-    @CurrentUser() user: User,
-    @Query() query: QueryReplyDto,
-  ) {
+  async getReplies(@CurrentUser() user: User, @Query() query: QueryReplyDto) {
     return this.quickReplyService.getReplies(
       user.id,
       user.role === 'ADMIN',
@@ -127,10 +121,7 @@ export class QuickReplyController {
   @ApiOperation({ summary: '删除快捷回复' })
   @Delete('replies/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteReply(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-  ) {
+  async deleteReply(@Param('id') id: string, @CurrentUser() user: User) {
     await this.quickReplyService.deleteReply(
       id,
       user.id,
@@ -143,10 +134,7 @@ export class QuickReplyController {
   @ApiOperation({ summary: '切换收藏状态' })
   @Post('replies/:id/favorite')
   @HttpCode(HttpStatus.OK)
-  async toggleFavorite(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-  ) {
+  async toggleFavorite(@Param('id') id: string, @CurrentUser() user: User) {
     await this.quickReplyService.toggleFavorite(id, user.id);
     return { success: true };
   }
@@ -168,6 +156,33 @@ export class QuickReplyController {
   @HttpCode(HttpStatus.OK)
   async incrementUsage(@Param('id') id: string) {
     await this.quickReplyService.incrementUsage(id);
+    return { success: true };
+  }
+
+  // ========== 个人偏好接口 ==========
+
+  @ApiOperation({ summary: '更新快捷回复个人偏好' })
+  @Patch('replies/:id/user-preference')
+  async updateUserPreference(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+    @Body() updateData: { isActive?: boolean; content?: string },
+  ) {
+    return this.quickReplyService.updateUserPreference(
+      id,
+      user.id,
+      updateData,
+    );
+  }
+
+  @ApiOperation({ summary: '删除快捷回复个人偏好（恢复为全局状态）' })
+  @Delete('replies/:id/user-preference')
+  @HttpCode(HttpStatus.OK)
+  async deleteUserPreference(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.quickReplyService.deleteUserPreference(id, user.id);
     return { success: true };
   }
 }

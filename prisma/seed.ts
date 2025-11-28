@@ -51,7 +51,7 @@ async function main() {
       icon: null,
       enabled: true,
       difyApiKey: 'your-dify-api-key-here', // 请替换为实际的API Key
-      difyBaseUrl: 'https://api.dify.ai/v1',
+      difyBaseUrl: 'http://118.89.16.95/v1', // 请替换为实际的 Dify 服务器地址
     },
   });
   console.log('✓ 创建游戏配置:', game1.name);
@@ -64,7 +64,7 @@ async function main() {
       icon: null,
       enabled: true,
       difyApiKey: 'your-dify-api-key-here', // 请替换为实际的API Key
-      difyBaseUrl: 'https://api.dify.ai/v1',
+      difyBaseUrl: 'http://118.89.16.95/v1', // 请替换为实际的 Dify 服务器地址
     },
   });
   console.log('✓ 创建游戏配置:', game2.name);

@@ -29,7 +29,11 @@ export class CreateReplyDto {
   })
   content: string;
 
-  @ApiProperty({ example: false, description: '是否为全局模板', required: false })
+  @ApiProperty({
+    example: false,
+    description: '是否为全局模板',
+    required: false,
+  })
   @IsBoolean()
   @IsOptional()
   isGlobal?: boolean;

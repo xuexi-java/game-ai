@@ -21,7 +21,6 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { websocketService } from '../../services/websocket.service';
 import { resolveAvatarUrl } from '../../utils/avatar';
 import './MainLayout.css';
 
@@ -102,7 +101,9 @@ const MainLayout: React.FC = () => {
     navigate('/profile');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 延迟导入避免循环依赖
+    const { websocketService } = await import('../../services/websocket.service');
     websocketService.disconnect();
     logout();
     navigate('/login');

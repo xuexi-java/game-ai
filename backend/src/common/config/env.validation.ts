@@ -43,7 +43,6 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   MAX_FILE_SIZE?: number;
-
 }
 
 export function validate(config: Record<string, unknown>) {

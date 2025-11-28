@@ -4,7 +4,6 @@ import { UserOutlined, LockOutlined, CustomerServiceOutlined } from '@ant-design
 import { useNavigate } from 'react-router-dom';
 import { login, saveUserInfo } from '../../services/auth.service';
 import { useAuthStore } from '../../stores/authStore';
-import { websocketService } from '../../services/websocket.service';
 import type { LoginRequest } from '../../types';
 import { useMessage } from '../../hooks/useMessage';
 import './index.css';
@@ -26,7 +25,8 @@ const LoginPage: React.FC = () => {
       saveUserInfo(response.accessToken, response.user);
       setUser(response.user);
       
-      // 连接WebSocket
+      // 连接WebSocket（延迟导入避免循环依赖）
+      const { websocketService } = await import('../../services/websocket.service');
       websocketService.connect(response.accessToken);
       
       message.success('登录成功，欢迎使用AI客服管理系统！');

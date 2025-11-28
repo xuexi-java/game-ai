@@ -11,9 +11,7 @@ export class TicketPriorityService {
    * 简化公式：直接基于问题类型权重计算
    * priorityScore = maxWeight + (sumOfOtherWeights * 0.3)
    */
-  async calculatePriority(
-    issueTypeIds: string[],
-  ): Promise<{
+  async calculatePriority(issueTypeIds: string[]): Promise<{
     priorityScore: number;
     priority: Priority;
   }> {
@@ -48,4 +46,3 @@ export class TicketPriorityService {
     return Priority.LOW;
   }
 }
-

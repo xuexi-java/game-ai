@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { SenderType, MessageType } from '@prisma/client';
@@ -12,6 +12,7 @@ export class MessageService {
     createMessageDto: CreateMessageDto,
     senderType: SenderType,
     senderId?: string,
+    currentUser?: { id: string; role: string },
   ) {
     // 验证会话存在
     const session = await this.prisma.session.findUnique({
@@ -20,6 +21,24 @@ export class MessageService {
 
     if (!session) {
       throw new NotFoundException('会话不存在');
+    }
+
+    // 权限检查：如果是客服发送消息，只能发送到自己处理的会话
+    if (senderType === 'AGENT' && senderId && currentUser) {
+      if (currentUser.role === 'AGENT') {
+        // 客服只能发送消息到自己处理的会话
+        if (session.agentId !== senderId) {
+          throw new NotFoundException(
+            '无权发送消息：该会话已分配给其他客服，只有处理该会话的客服才能回复',
+          );
+        }
+        // 检查会话状态，必须是IN_PROGRESS状态才能发送消息
+        if (session.status !== 'IN_PROGRESS') {
+          throw new BadRequestException(
+            '会话未接入，请先接入会话后才能发送消息',
+          );
+        }
+      }
     }
 
     const message = await this.prisma.message.create({

@@ -112,6 +112,8 @@ const TicketsPage: React.FC = () => {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [assigningSessionId, setAssigningSessionId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [sortField, setSortField] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const message = useMessage();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
@@ -141,9 +143,9 @@ const TicketsPage: React.FC = () => {
         endDate: filters.dateRange?.[1]
           ? filters.dateRange[1].endOf('day').format('YYYY-MM-DD')
           : undefined,
-        // 默认按创建时间倒序排序
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
+        // 使用当前排序设置（后端排序，支持所有数据）
+        sortBy: sortField,
+        sortOrder: sortOrder,
       });
 
       // 转换后端返回的数据格式，将 ticketIssueTypes 转换为 issueTypes
@@ -233,7 +235,7 @@ const TicketsPage: React.FC = () => {
 
   useEffect(() => {
     loadTickets();
-  }, [currentPage, pageSize, filters]);
+  }, [currentPage, pageSize, filters, sortField, sortOrder]);
 
   // 查看工单详情
   const handleViewDetail = async (ticketId: string) => {
@@ -426,12 +428,12 @@ const TicketsPage: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 150,
-      sorter: (a, b) => {
-        const timeA = dayjs(a.createdAt).valueOf();
-        const timeB = dayjs(b.createdAt).valueOf();
-        return timeB - timeA; // 倒序：最新的在前
-      },
+      // 使用后端排序，确保排序基于整个数据集
+      sorter: true,
+      sortOrder: sortField === 'createdAt' ? (sortOrder === 'desc' ? 'descend' : 'ascend') : null,
       defaultSortOrder: 'descend',
+      // 确保排序字段名称与后端一致
+      sortDirections: ['descend', 'ascend'],
       render: (text) => dayjs(text).format('YYYY-MM-DD HH:mm'),
     },
     {
@@ -592,6 +594,13 @@ const TicketsPage: React.FC = () => {
                 allowClear
                 style={{ width: 280 }}
                 placeholder={['开始日期', '结束日期']}
+                format="YYYY-MM-DD"
+                // 允许选择任意日期范围，不限制天数
+                disabledDate={(current) => {
+                  // 不限制未来日期，只限制不能选择今天之后的日期（可选）
+                  // return current && current > dayjs().endOf('day');
+                  return false; // 允许选择所有日期
+                }}
               />
               
               <Button
@@ -614,6 +623,51 @@ const TicketsPage: React.FC = () => {
           pagination={paginationConfig}
           scroll={{ x: 1200 }}
           className="tickets-table"
+          onChange={(_pagination, _filters, sorter: any) => {
+            // 处理排序变化
+            // sorter 可能是单个对象或数组（多列排序时）
+            const currentSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+            
+            // 调试日志（开发环境）
+            if (import.meta.env.DEV && currentSorter) {
+              console.log('排序变化:', {
+                sorter: currentSorter,
+                field: currentSorter.field,
+                order: currentSorter.order,
+                currentSortField: sortField,
+                currentSortOrder: sortOrder,
+              });
+            }
+            
+            if (currentSorter && currentSorter.field) {
+              const newSortField = currentSorter.field as string;
+              // Ant Design Table 的 order 值：'ascend' | 'descend' | null | undefined
+              // 'ascend' = 升序（最早的在前面），'descend' = 降序（最新的在前面）
+              let newSortOrder: 'asc' | 'desc' = 'desc';
+              if (currentSorter.order === 'ascend') {
+                newSortOrder = 'asc'; // 升序：从最早到最晚
+              } else if (currentSorter.order === 'descend') {
+                newSortOrder = 'desc'; // 降序：从最晚到最早
+              } else {
+                // 如果没有明确的 order（取消排序），恢复默认降序
+                newSortOrder = 'desc';
+              }
+              
+              // 只有当排序字段或顺序发生变化时才更新
+              if (newSortField !== sortField || newSortOrder !== sortOrder) {
+                setSortField(newSortField);
+                setSortOrder(newSortOrder);
+                setCurrentPage(1); // 重置到第一页，确保从排序后的第一页开始显示
+              }
+            } else {
+              // 取消排序或没有排序，恢复默认（按创建时间降序：最新的在前）
+              if (sortField !== 'createdAt' || sortOrder !== 'desc') {
+                setSortField('createdAt');
+                setSortOrder('desc');
+                setCurrentPage(1);
+              }
+            }
+          }}
         />
       </Card>
 

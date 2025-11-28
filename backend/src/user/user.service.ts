@@ -156,4 +156,20 @@ export class UserService {
 
     return agents.map((agent) => this.sanitizeUser(agent));
   }
+
+  // 检查是否有在线客服（公共接口，不需要认证）
+  async hasOnlineAgents(): Promise<{ hasAgents: boolean; count: number }> {
+    const count = await this.prisma.user.count({
+      where: {
+        deletedAt: null,
+        role: { in: ['AGENT', 'ADMIN'] },
+        isOnline: true,
+      },
+    });
+
+    return {
+      hasAgents: count > 0,
+      count,
+    };
+  }
 }

@@ -46,8 +46,13 @@ import {
   closeSession,
 } from '../../services/session.service';
 import { sendTicketMessage, getTicketMessages } from '../../services/ticket.service';
-import { websocketService } from '../../services/websocket.service';
 import { uploadTicketAttachment } from '../../services/upload.service';
+
+// 延迟导入 websocketService 避免循环依赖
+const getWebSocketService = async () => {
+  const { websocketService } = await import('../../services/websocket.service');
+  return websocketService;
+};
 import QuickReplyDrawer from '../../components/QuickReplyDrawer';
 
 const { TextArea } = Input;
@@ -308,7 +313,6 @@ const ActivePage: React.FC = () => {
     };
 
     const handleRefreshSessions = () => {
-      console.log('收到刷新会话列表事件');
       loadSessions();
     };
 
@@ -358,15 +362,14 @@ const ActivePage: React.FC = () => {
           const ticketMessages = await getTicketMessages(ticketId);
           
           // 将工单消息转换为会话消息格式
-          const convertedMessages = (Array.isArray(ticketMessages) ? ticketMessages : []).map((msg: any) => ({
+          const convertedMessages: Message[] = (Array.isArray(ticketMessages) ? ticketMessages : []).map((msg: any) => ({
             id: msg.id,
             sessionId: session.id,
-            senderType: msg.senderId ? 'AGENT' : 'PLAYER',
+            senderType: (msg.senderId ? 'AGENT' : 'PLAYER') as 'AGENT' | 'PLAYER',
             messageType: 'TEXT' as const,
             content: msg.content,
             createdAt: msg.createdAt,
-            senderId: msg.senderId,
-            sender: msg.sender,
+            agentId: msg.senderId,
           }));
 
           // 确保消息按时间排序
@@ -408,7 +411,8 @@ const ActivePage: React.FC = () => {
         
         // 如果会话已接入，加入WebSocket房间以接收实时消息
         if (detail.status === 'IN_PROGRESS' && detail.agentId === authUser?.id) {
-          await websocketService.joinSession(session.id);
+          const wsService = await getWebSocketService();
+          await wsService.joinSession(session.id);
         }
       } catch (error) {
         console.error('加载会话详情失败', error);
@@ -533,7 +537,8 @@ const ActivePage: React.FC = () => {
 
     try {
       // 通过WebSocket发送消息
-      const result = await websocketService.sendAgentMessage(sessionToUse.id, content);
+      const wsService = await getWebSocketService();
+      const result = await wsService.sendAgentMessage(sessionToUse.id, content);
 
       if (!result.success) {
         // 发送失败，移除临时消息
@@ -600,7 +605,8 @@ const ActivePage: React.FC = () => {
       ]);
       
       // 通过WebSocket发送消息
-      const result = await websocketService.sendAgentMessage(
+      const wsService = await getWebSocketService();
+      const result = await wsService.sendAgentMessage(
         currentSession.id, 
         uploadResult.fileUrl,
         isImage ? 'IMAGE' : 'TEXT'
@@ -647,15 +653,14 @@ const ActivePage: React.FC = () => {
         const ticketMessages = await getTicketMessages(ticketId);
         
         // 将工单消息转换为会话消息格式
-        const convertedMessages = (Array.isArray(ticketMessages) ? ticketMessages : []).map((msg: any) => ({
+        const convertedMessages: Message[] = (Array.isArray(ticketMessages) ? ticketMessages : []).map((msg: any) => ({
           id: msg.id,
           sessionId: session.id,
-          senderType: msg.senderId ? 'AGENT' : 'PLAYER',
+          senderType: (msg.senderId ? 'AGENT' : 'PLAYER') as 'AGENT' | 'PLAYER',
           messageType: 'TEXT' as const,
           content: msg.content,
           createdAt: msg.createdAt,
-          senderId: msg.senderId,
-          sender: msg.sender,
+          agentId: msg.senderId,
         }));
 
         // 设置当前会话和消息
@@ -712,7 +717,8 @@ const ActivePage: React.FC = () => {
       }
       
       // 加入WebSocket会话房间
-      await websocketService.joinSession(session.id);
+      const wsService = await getWebSocketService();
+      await wsService.joinSession(session.id);
       
       // 刷新会话列表（在更新当前会话之后）
       await loadSessions();
@@ -806,12 +812,12 @@ const ActivePage: React.FC = () => {
       
       // 直接使用chat API（与后端sendChatMessage方法保持一致）
       apiEndpoint = `${normalizedBase}/chat-messages`;
-        payload = {
+      payload = {
         inputs: {},
         query: `请优化以下客服回复内容，使其更加专业和友好：\n${content}`,
         response_mode: 'blocking',
-          user: difyUser,
-        };
+        user: difyUser,
+      };
       
       // 开发环境显示实际请求信息
       if (import.meta.env.DEV) {

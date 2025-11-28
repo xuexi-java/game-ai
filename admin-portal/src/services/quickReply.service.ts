@@ -61,6 +61,7 @@ interface Reply {
   createdAt: string;
   isFavorited: boolean;
   category: Category;
+  hasPersonalPreference?: boolean; // ✅ 是否有个人偏好
 }
 
 interface PaginatedResponse<T> {
@@ -152,5 +153,19 @@ export const quickReplyService = {
    */
   incrementUsage: async (replyId: string): Promise<{ success: boolean }> => {
     return await apiClient.post(`/quick-reply/replies/${replyId}/usage`);
+  },
+
+  /**
+   * 更新用户个人偏好
+   */
+  updateUserPreference: async (id: string, data: { isActive?: boolean; content?: string }): Promise<void> => {
+    return await apiClient.patch(`/quick-reply/replies/${id}/user-preference`, data);
+  },
+
+  /**
+   * 删除用户个人偏好（恢复为全局状态）
+   */
+  deleteUserPreference: async (id: string): Promise<void> => {
+    return await apiClient.delete(`/quick-reply/replies/${id}/user-preference`);
   },
 };

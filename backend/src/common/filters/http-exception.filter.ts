@@ -6,9 +6,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { LoggerService } from '../logger/logger.service';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new LoggerService();
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -26,18 +29,36 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // 记录详细的错误信息
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
-      console.error('=== 服务器内部错误 ===');
-      console.error('路径:', request.url);
-      console.error('方法:', request.method);
-      console.error('错误:', exception);
+      const errorDetails: any = {
+        path: request.url,
+        method: request.method,
+        error: exception,
+      };
+
       if (exception instanceof Error) {
-        console.error('错误消息:', exception.message);
-        console.error('错误堆栈:', exception.stack);
+        errorDetails.message = exception.message;
+        errorDetails.stack = exception.stack;
         if ((exception as any).code) {
-          console.error('错误代码:', (exception as any).code);
+          errorDetails.code = (exception as any).code;
         }
       }
-      console.error('==================');
+
+      this.logger.error(
+        `服务器内部错误: ${request.method} ${request.url}`,
+        exception instanceof Error ? exception.stack : undefined,
+        'HttpExceptionFilter',
+        errorDetails,
+      );
+    } else {
+      // 记录非500错误（警告级别）
+      this.logger.warn(
+        `HTTP ${status}: ${request.method} ${request.url}`,
+        'HttpExceptionFilter',
+        {
+          message:
+            typeof message === 'string' ? message : (message as any).message,
+        },
+      );
     }
 
     response.status(status).json({

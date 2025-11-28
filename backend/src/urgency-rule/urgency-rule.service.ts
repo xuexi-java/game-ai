@@ -106,7 +106,11 @@ export class UrgencyRuleService {
     session: any,
   ): Promise<boolean> {
     // 问题类型匹配是必需的（核心匹配条件）
-    if (!conditions.issueTypeIds || !Array.isArray(conditions.issueTypeIds) || conditions.issueTypeIds.length === 0) {
+    if (
+      !conditions.issueTypeIds ||
+      !Array.isArray(conditions.issueTypeIds) ||
+      conditions.issueTypeIds.length === 0
+    ) {
       return false;
     }
 
@@ -127,7 +131,11 @@ export class UrgencyRuleService {
     }
 
     // 以下为可选的附加匹配条件（用于更精确的匹配）
-    if (conditions.keywords && Array.isArray(conditions.keywords) && conditions.keywords.length > 0) {
+    if (
+      conditions.keywords &&
+      Array.isArray(conditions.keywords) &&
+      conditions.keywords.length > 0
+    ) {
       const matches = conditions.keywords.some((keyword: string) =>
         ticket.description.toLowerCase().includes(keyword.toLowerCase()),
       );

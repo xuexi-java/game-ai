@@ -18,7 +18,13 @@ import { Inject, forwardRef } from '@nestjs/common';
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:20001', 'http://localhost:20002'],
+    // 注意：WebSocket Gateway 的 CORS 配置是静态的，无法从环境变量动态读取
+    // 实际 CORS 控制由 main.ts 中的 app.enableCors() 统一管理
+    // 这里的配置仅作为开发环境的默认值，生产环境应通过环境变量 FRONTEND_URL 配置
+    origin: process.env.FRONTEND_URL?.split(',').map((url) => url.trim()) || [
+      'http://localhost:20001',
+      'http://localhost:20002',
+    ],
     credentials: true,
   },
   namespace: '/',
@@ -32,7 +38,13 @@ export class WebsocketGateway
   private readonly logger = new Logger(WebsocketGateway.name);
   private connectedClients = new Map<
     string,
-    { userId?: string; role?: string; username?: string; realName?: string; sessionId?: string }
+    {
+      userId?: string;
+      role?: string;
+      username?: string;
+      realName?: string;
+      sessionId?: string;
+    }
   >();
   private playerSessions = new Map<string, string>(); // clientId -> sessionId
   private heartbeatIntervals = new Map<string, NodeJS.Timeout>(); // clientId -> interval
@@ -82,12 +94,14 @@ export class WebsocketGateway
                 realName: user.realName || undefined,
                 avatar: user.avatar || undefined,
               });
-              
+
               // 客服上线时，自动分配 WAITING 状态的工单
               // 异步执行，不阻塞连接
-              this.ticketService.autoAssignWaitingTickets(user.id).catch((error) => {
-                this.logger.error(`自动分配工单失败: ${error.message}`);
-              });
+              this.ticketService
+                .autoAssignWaitingTickets(user.id)
+                .catch((error) => {
+                  this.logger.error(`自动分配工单失败: ${error.message}`);
+                });
             }
 
             this.logger.log(`用户连接: ${user.username} (${client.id})`);
@@ -99,7 +113,7 @@ export class WebsocketGateway
         // 玩家端连接（无token）
         this.connectedClients.set(client.id, {});
         this.logger.log(`玩家连接: ${client.id}`);
-        
+
         // 设置心跳检测
         this.setupHeartbeat(client);
       }
@@ -129,22 +143,12 @@ export class WebsocketGateway
         });
       }
     } else {
-      // 玩家端断开连接，检查是否有活跃会话需要关闭
+      // 玩家端断开连接
+      // 注意：不再自动关闭会话，让会话保持在队列中，等待客服处理
+      // 玩家可以通过主动关闭会话或客服处理来完成会话
       const sessionId = this.playerSessions.get(client.id);
       if (sessionId) {
-        try {
-          const activeSession = await this.prisma.session.findUnique({
-            where: { id: sessionId },
-          });
-
-          if (activeSession && (activeSession.status === 'IN_PROGRESS' || activeSession.status === 'QUEUED')) {
-            // 通过 ticketService 调用 sessionService 的 closeByPlayer 方法
-            // 由于循环依赖，需要通过 ticketService 来访问 sessionService
-            await this.ticketService.closeSessionByPlayer(activeSession.id);
-          }
-        } catch (error) {
-          this.logger.error(`处理玩家断开连接失败: ${error.message}`);
-        }
+        this.logger.log(`玩家断开连接，会话 ${sessionId} 保持在队列中，等待客服处理`);
         this.playerSessions.delete(client.id);
       }
     }
@@ -180,7 +184,8 @@ export class WebsocketGateway
   // 管理端 - 客服发送消息
   @SubscribeMessage('agent:send-message')
   async handleAgentMessage(
-    @MessageBody() data: { sessionId: string; content: string; messageType?: string },
+    @MessageBody()
+    data: { sessionId: string; content: string; messageType?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -201,15 +206,40 @@ export class WebsocketGateway
         return { success: false, error: '会话不存在' };
       }
 
-      // 创建会话消息
+      // 权限检查：只有处理该会话的客服才能发送消息
+      // 管理员可以发送消息到任何会话
+      const user = await this.prisma.user.findUnique({
+        where: { id: clientInfo.userId },
+        select: { role: true },
+      });
+
+      if (user?.role === 'AGENT') {
+        // 客服只能发送消息到自己处理的会话
+        if (session.agentId !== clientInfo.userId) {
+          return {
+            success: false,
+            error: '无权发送消息：该会话已分配给其他客服，只有处理该会话的客服才能回复',
+          };
+        }
+        // 检查会话状态，必须是IN_PROGRESS状态才能发送消息
+        if (session.status !== 'IN_PROGRESS') {
+          return {
+            success: false,
+            error: '会话未接入，请先接入会话后才能发送消息',
+          };
+        }
+      }
+
+      // 创建会话消息（传递用户信息用于权限检查）
       const message = await this.messageService.create(
         {
           sessionId: data.sessionId,
           content: data.content,
-          messageType: data.messageType as any || 'TEXT',
+          messageType: (data.messageType as any) || 'TEXT',
         },
         'AGENT',
         clientInfo.userId,
+        user ? { id: clientInfo.userId, role: user.role } : undefined,
       );
 
       // 发送到会话房间
@@ -271,7 +301,7 @@ export class WebsocketGateway
     @ConnectedSocket() client: Socket,
   ) {
     client.join(`session:${data.sessionId}`);
-    
+
     // 记录玩家的会话ID（用于断开连接时关闭会话）
     const clientInfo = this.connectedClients.get(client.id);
     if (!clientInfo?.userId) {
@@ -282,7 +312,7 @@ export class WebsocketGateway
         existingInfo.sessionId = data.sessionId;
       }
     }
-    
+
     this.logger.log(`客户端加入会话: ${data.sessionId}`);
     return { success: true };
   }
@@ -299,9 +329,9 @@ export class WebsocketGateway
     // 清除旧的定时器
     this.clearHeartbeat(client.id);
 
-    // 设置心跳超时（30秒无响应则视为断开）
+    // 设置心跳超时（2分钟无响应则视为断开）
     let lastPingTime = Date.now();
-    const heartbeatTimeout = 30000; // 30秒
+    const heartbeatTimeout = 120000; // 2分钟（120秒）
 
     // 监听 ping 消息
     client.on('ping', () => {
@@ -367,7 +397,9 @@ export class WebsocketGateway
 
   // 通知会话更新（客服接入、队列更新等）
   notifySessionUpdate(sessionId: string, data: any) {
+    // 发送到会话房间（包括玩家端和客服端）
     this.server.to(`session:${sessionId}`).emit('session-update', data);
+    this.logger.debug(`通知会话更新: ${sessionId}, 状态: ${data.status}, 房间: session:${sessionId}`);
   }
 
   // 通知新会话（管理端）
@@ -376,7 +408,11 @@ export class WebsocketGateway
   }
 
   // 通知队列更新
-  notifyQueueUpdate(sessionId: string, position: number, waitTime?: number | null) {
+  notifyQueueUpdate(
+    sessionId: string,
+    position: number,
+    waitTime?: number | null,
+  ) {
     this.server.to(`session:${sessionId}`).emit('queue-update', {
       queuePosition: position,
       position, // 兼容旧版本
