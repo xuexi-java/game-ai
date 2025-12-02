@@ -22,8 +22,8 @@ import { Inject, forwardRef } from '@nestjs/common';
     // 实际 CORS 控制由 main.ts 中的 app.enableCors() 统一管理
     // 这里的配置仅作为开发环境的默认值，生产环境应通过环境变量 FRONTEND_URL 配置
     origin: process.env.FRONTEND_URL?.split(',').map((url) => url.trim()) || [
-      'http://localhost:20001',
-      'http://localhost:20002',
+      'http://localhost:20101',
+      'http://localhost:20102',
     ],
     credentials: true,
   },

@@ -80,24 +80,24 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
       
       - name: Install dependencies
-        working-directory: ./${{ matrix.app }}
+        working-directory: ./frontend/${{ matrix.app }}
         run: npm ci
       
       - name: Run tests
-        working-directory: ./${{ matrix.app }}
+        working-directory: ./frontend/${{ matrix.app }}
         run: npm test -- --run
       
       - name: Generate coverage
-        working-directory: ./${{ matrix.app }}
+        working-directory: ./frontend/${{ matrix.app }}
         run: npm run test:coverage
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          file: ./${{ matrix.app }}/coverage/lcov.info
+          file: ./frontend/${{ matrix.app }}/coverage/lcov.info
           flags: ${{ matrix.app }}
           name: ${{ matrix.app }}-coverage
 

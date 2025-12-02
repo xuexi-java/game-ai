@@ -620,8 +620,21 @@ export class SessionService {
   async joinSession(sessionId: string, agentId: string) {
     const session = await this.findOne(sessionId);
 
+    // 允许接入 QUEUED、PENDING 或 CLOSED（但工单状态为 WAITING）的会话
     if (session.status !== 'QUEUED' && session.status !== 'PENDING') {
-      throw new BadRequestException('会话状态不正确，无法接入');
+      // 如果是 CLOSED 状态，检查工单状态
+      if (session.status === 'CLOSED') {
+        const ticket = await this.prisma.ticket.findUnique({
+          where: { id: session.ticketId },
+          select: { status: true },
+        });
+        // 只有工单状态为 WAITING 时，才允许接入
+        if (ticket?.status !== 'WAITING') {
+          throw new BadRequestException('会话状态不正确，无法接入');
+        }
+      } else {
+        throw new BadRequestException('会话状态不正确，无法接入');
+      }
     }
 
     // 检查当前用户角色
@@ -932,18 +945,17 @@ export class SessionService {
       },
     });
 
+    // ⚠️ 关键修复：只从在线客服中选择，不选择离线客服
     const onlineAgents = agents.filter((agent) => agent.isOnline);
-    const candidateAgents = (
-      onlineAgents.length > 0 ? onlineAgents : agents
-    ).filter((agent) => agent.deletedAt === null);
-
-    const allAgentsBusy =
-      candidateAgents.length > 0 &&
-      candidateAgents.every((agent) => agent.sessions.length > 0);
-
-    let candidatePool = [...candidateAgents];
-
-    if (candidatePool.length === 0 || allAgentsBusy) {
+    
+    // 只使用在线客服，如果没有在线客服，检查在线管理员
+    let candidatePool: typeof agents = [];
+    
+    if (onlineAgents.length > 0) {
+      // 有在线客服，只从在线客服中选择
+      candidatePool = onlineAgents.filter((agent) => agent.deletedAt === null);
+    } else {
+      // 没有在线客服，检查在线管理员
       const admins = await this.prisma.user.findMany({
         where: {
           role: 'ADMIN',
@@ -951,18 +963,18 @@ export class SessionService {
         },
         include: agentInclude,
       });
-      if (admins.length > 0) {
-        const onlineAdmins = admins.filter((admin) => admin.isOnline);
-        const adminPool = onlineAdmins.length > 0 ? onlineAdmins : admins;
-        candidatePool =
-          candidatePool.length > 0
-            ? [...candidatePool, ...adminPool]
-            : [...adminPool];
+      const onlineAdmins = admins.filter((admin) => admin.isOnline);
+      if (onlineAdmins.length > 0) {
+        // 有在线管理员，只从在线管理员中选择
+        candidatePool = onlineAdmins;
+      } else {
+        // 既没有在线客服也没有在线管理员，不分配
+        return session;
       }
     }
 
     if (candidatePool.length === 0) {
-      // ✅ 如果没有可分配的客服，不抛出错误，保持未分配状态
+      // ✅ 如果没有可分配的在线客服/管理员，不抛出错误，保持未分配状态
       return session;
     }
 
@@ -972,11 +984,14 @@ export class SessionService {
       loginTime: agent.lastLoginAt || agent.createdAt,
     }));
 
-    // 排序：先按负载升序，负载相同时按登录时间升序
+    // 排序：在在线客服/管理员中，按负载升序，然后按登录时间升序
+    // 注意：候选池中都是在线客服/管理员，不需要再按在线状态排序
     agentsWithLoad.sort((a, b) => {
+      // 先按负载
       if (a.load !== b.load) {
         return a.load - b.load;
       }
+      // 然后按登录时间
       return new Date(a.loginTime).getTime() - new Date(b.loginTime).getTime();
     });
     const selectedAgent = agentsWithLoad[0].agent;
@@ -1190,12 +1205,88 @@ export class SessionService {
     await this.reorderQueue();
 
     // ✅ 自动分配客服（只分配，不改变状态，保持 QUEUED）
+    let assignmentSucceeded = false;
     try {
-      await this.autoAssignAgentOnly(sessionId);
-      this.logger.log(`会话 ${sessionId} 已自动分配给客服`);
+      const assignedSession = await this.autoAssignAgentOnly(sessionId);
+      // ⚠️ 关键：检查是否真的分配了客服
+      if (assignedSession.agentId) {
+        assignmentSucceeded = true;
+        this.logger.log(`会话 ${sessionId} 已自动分配给客服`);
+      } else {
+        this.logger.warn(`会话 ${sessionId} 未能分配客服（可能没有可分配的客服）`);
+      }
     } catch (error) {
       // 自动分配失败可能是因为所有客服都忙，这是正常的，保持排队状态
       this.logger.warn(`自动分配失败，会话 ${sessionId} 保持在排队状态: ${error.message}`);
+    }
+
+    // ⚠️ 关键修复：如果自动分配失败，检查是否还有在线客服
+    if (!assignmentSucceeded) {
+      const stillHasOnlineAgents = await this.prisma.user.count({
+        where: {
+          role: 'AGENT',
+          isOnline: true,
+          deletedAt: null,
+        },
+      });
+      const stillHasOnlineAdmins = await this.prisma.user.count({
+        where: {
+          role: 'ADMIN',
+          isOnline: true,
+          deletedAt: null,
+        },
+      });
+
+      // 如果现在没有在线客服了，关闭会话并转为工单，告知玩家
+      if (stillHasOnlineAgents === 0 && stillHasOnlineAdmins === 0) {
+        this.logger.warn(`自动分配失败且无在线客服，关闭会话 ${sessionId} 并转为工单`);
+        
+        // 更新工单为加急状态
+        await this.ticketService.updateStatus(session.ticketId, 'WAITING');
+        await this.prisma.ticket.update({
+          where: { id: session.ticketId },
+          data: {
+            priority: 'URGENT',
+            priorityScore: Math.max(priorityScore, 80),
+          },
+        });
+
+        // 关闭会话
+        await this.prisma.session.update({
+          where: { id: sessionId },
+          data: {
+            status: 'CLOSED',
+            closedAt: new Date(),
+            playerUrgency: transferDto.urgency,
+            priorityScore,
+            allowManualTransfer: false,
+            transferReason: transferDto.reason,
+            transferIssueTypeId: transferDto.issueTypeId,
+            transferAt: new Date(),
+          },
+        });
+
+        // 创建系统消息告知玩家
+        const ticket = await this.ticketService.findOne(session.ticketId);
+        await this.messageService.createSystemMessage(
+          sessionId,
+          `当前暂无客服在线，您的问题已转为【加急工单】(${ticket.ticketNo})，我们将优先处理。您可以通过工单号查看处理进度。`,
+        );
+
+        const updatedSession = await this.findOne(sessionId);
+        this.websocketGateway.notifySessionUpdate(sessionId, updatedSession);
+
+        return {
+          queued: false,
+          queuePosition: null,
+          estimatedWaitTime: null,
+          onlineAgents: 0,
+          autoAssigned: false,
+          message: '当前暂无客服在线，您的问题已转为【加急工单】，我们将优先处理。',
+          ticketNo: ticket.ticketNo,
+          convertedToTicket: true,
+        };
+      }
     }
 
     const finalSession = await this.findOne(sessionId);

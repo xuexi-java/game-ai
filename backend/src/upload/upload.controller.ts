@@ -36,6 +36,9 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB，与 upload.service.ts 中的验证一致
+      },
     }),
   )
   @ApiOperation({ summary: '上传工单附件（玩家端）' })

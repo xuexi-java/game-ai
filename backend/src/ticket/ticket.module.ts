@@ -6,6 +6,7 @@ import { TicketSchedulerService } from './ticket-scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IssueTypeModule } from '../issue-type/issue-type.module';
 import { TicketMessageModule } from '../ticket-message/ticket-message.module';
+import { MessageModule } from '../message/message.module';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { SessionModule } from '../session/session.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -14,6 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
   imports: [
     IssueTypeModule,
     TicketMessageModule,
+    MessageModule,
     forwardRef(() => WebsocketModule),
     forwardRef(() => SessionModule),
     ScheduleModule.forRoot(),

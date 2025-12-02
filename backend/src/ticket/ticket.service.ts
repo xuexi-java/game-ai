@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto, TicketResponseDto } from './dto/create-ticket.dto';
 import { TicketPriorityService } from './ticket-priority.service';
 import { TicketMessageService } from '../ticket-message/ticket-message.service';
+import { MessageService } from '../message/message.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { SessionService } from '../session/session.service';
 import { IssueTypeService } from '../issue-type/issue-type.service';
@@ -19,6 +20,7 @@ export class TicketService {
     private prisma: PrismaService,
     private priorityService: TicketPriorityService,
     private ticketMessageService: TicketMessageService,
+    private messageService: MessageService,
     @Inject(forwardRef(() => WebsocketGateway))
     private websocketGateway: WebsocketGateway,
     @Inject(forwardRef(() => SessionService))
@@ -1296,12 +1298,66 @@ export class TicketService {
       }
 
       // ✅ 自动分配客服（只分配，不改变状态，保持 QUEUED）
+      let assignmentSucceeded = false;
       try {
-        await this.sessionService.autoAssignAgentOnly(session.id);
-        console.log(`会话 ${session.id} 已自动分配给客服`);
+        const assignedSession = await this.sessionService.autoAssignAgentOnly(session.id);
+        // ⚠️ 关键：检查是否真的分配了客服
+        if (assignedSession.agentId) {
+          assignmentSucceeded = true;
+          console.log(`会话 ${session.id} 已自动分配给客服`);
+        } else {
+          console.warn(`会话 ${session.id} 未能分配客服（可能没有可分配的客服）`);
+        }
       } catch (error) {
         // 自动分配失败可能是因为所有客服都忙，这是正常的，保持未分配状态
         console.warn(`自动分配失败，会话 ${session.id} 保持未分配状态: ${error.message}`);
+      }
+
+      // ⚠️ 关键修复：如果自动分配失败，检查是否还有在线客服
+      if (!assignmentSucceeded) {
+        const stillHasOnlineAgents = await this.prisma.user.count({
+          where: {
+            role: { in: ['AGENT', 'ADMIN'] },
+            isOnline: true,
+            deletedAt: null,
+          },
+        });
+
+        // 如果现在没有在线客服了，关闭会话并转为工单，告知玩家
+        if (stillHasOnlineAgents === 0) {
+          console.warn(`自动分配失败且无在线客服，关闭会话 ${session.id} 并转为工单`);
+          
+          // 更新工单为加急状态
+          await this.prisma.ticket.update({
+            where: { id: ticketId },
+            data: {
+              status: 'WAITING',
+              priority: 'URGENT',
+              priorityScore: Math.max(ticket.priorityScore || 0, 80),
+            },
+          });
+
+          // 关闭会话
+          await this.prisma.session.update({
+            where: { id: session.id },
+            data: {
+              status: 'CLOSED',
+              closedAt: new Date(),
+            },
+          });
+
+          // 创建系统消息告知玩家
+          await this.messageService.createSystemMessage(
+            session.id,
+            `当前暂无客服在线，您的问题已转为【加急工单】(${ticket.ticketNo})，我们将优先处理。您可以通过工单号查看处理进度。`,
+          );
+
+          // 通知会话更新
+          const updatedSession = await this.sessionService.findOne(session.id);
+          this.websocketGateway.notifySessionUpdate(session.id, updatedSession);
+
+          return { hasAgents: false, sessionCreated: false };
+        }
       }
 
       // 通知管理端有新会话（让客服能看到待接入队列）

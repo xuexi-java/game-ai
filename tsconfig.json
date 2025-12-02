@@ -15,7 +15,7 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["prisma/**/*"],
+  "include": ["backend/prisma/**/*"],
   "exclude": ["node_modules", "dist"]
 }
 

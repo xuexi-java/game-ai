@@ -265,7 +265,6 @@ model User {
   quickReplyCategories     QuickReplyCategory[] @relation("QuickReplyCategories")
   quickReplies             QuickReply[]         @relation("QuickReplies")
   quickReplyFavorites      QuickReplyFavorite[] @relation("QuickReplyFavorites")
-  quickReplyUserPreferences QuickReplyUserPreference[] @relation("QuickReplyUserPreferences")
 
   @@index([username])
   @@index([role])
@@ -376,6 +375,8 @@ model QuickReplyCategory {
   replies   QuickReply[]
   creator   User?    @relation("QuickReplyCategories", fields: [creatorId], references: [id])
 
+  // ✅ 允许不同用户创建相同名称的分类，但同一用户不能创建重复名称的分类
+  @@unique([name, creatorId])
   @@index([isGlobal, isActive, deletedAt])
   @@index([creatorId, isActive, deletedAt])
   @@map("QuickReplyCategory")
@@ -402,7 +403,6 @@ model QuickReply {
   category      QuickReplyCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   creator       User?              @relation("QuickReplies", fields: [creatorId], references: [id], onDelete: SetNull)
   favorites     QuickReplyFavorite[]
-  userPreferences QuickReplyUserPreference[]
 
   @@index([categoryId, isActive, deletedAt])
   @@index([isGlobal, isActive, deletedAt])
@@ -429,25 +429,4 @@ model QuickReplyFavorite {
   @@index([userId])
   @@index([replyId])
   @@map("QuickReplyFavorite")
-}
-
-// ==================== 快捷回复用户偏好 ====================
-
-model QuickReplyUserPreference {
-  id        String   @id @default(uuid())
-  userId    String
-  replyId   String
-  isActive  Boolean? // 个人启用状态（null 表示使用全局状态）
-  content   String?  @db.Text // 个人修改的内容（null 表示使用全局内容）
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 关系
-  user  User       @relation("QuickReplyUserPreferences", fields: [userId], references: [id], onDelete: Cascade)
-  reply QuickReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, replyId])
-  @@index([userId])
-  @@index([replyId])
-  @@map("QuickReplyUserPreference")
 }

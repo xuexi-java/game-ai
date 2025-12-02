@@ -159,30 +159,4 @@ export class QuickReplyController {
     return { success: true };
   }
 
-  // ========== 个人偏好接口 ==========
-
-  @ApiOperation({ summary: '更新快捷回复个人偏好' })
-  @Patch('replies/:id/user-preference')
-  async updateUserPreference(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-    @Body() updateData: { isActive?: boolean; content?: string },
-  ) {
-    return this.quickReplyService.updateUserPreference(
-      id,
-      user.id,
-      updateData,
-    );
-  }
-
-  @ApiOperation({ summary: '删除快捷回复个人偏好（恢复为全局状态）' })
-  @Delete('replies/:id/user-preference')
-  @HttpCode(HttpStatus.OK)
-  async deleteUserPreference(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-  ) {
-    await this.quickReplyService.deleteUserPreference(id, user.id);
-    return { success: true };
-  }
 }
