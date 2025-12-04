@@ -10,6 +10,16 @@ coverage/
 build/
 dist/
 
+# Backend build artifacts
+backend/dist/
+backend/logs/
+backend/coverage/
+
+# Frontend build artifacts
+frontend/*/dist/
+frontend/*/build/
+frontend/*/coverage/
+
 # Environment variables
 .env
 .env.local

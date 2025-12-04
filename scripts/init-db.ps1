@@ -72,10 +72,20 @@ Write-Host ""
 Write-Host "✅ 数据库初始化完成！" -ForegroundColor Green
 Write-Host ""
 Write-Host "📋 默认账户信息:" -ForegroundColor Cyan
-Write-Host "   管理员: admin / admin123"
-Write-Host "   客服: agent1 / agent123"
 Write-Host ""
-Write-Host "⚠️  请在生产环境中修改默认密码！" -ForegroundColor Yellow
+Write-Host "  管理员账户:" -ForegroundColor Cyan
+Write-Host "    - admin / admin123 (系统管理员)"
+Write-Host "    - admin2 / admin123 (副管理员)"
+Write-Host ""
+Write-Host "  客服账户:" -ForegroundColor Cyan
+Write-Host "    - agent1 / agent123 (客服001)"
+Write-Host "    - agent2 / agent123 (客服002)"
+Write-Host "    - agent3 / agent123 (客服003)"
+Write-Host ""
+Write-Host "⚠️  重要提示:" -ForegroundColor Yellow
+Write-Host "   - 所有账户的默认密码都是 'admin123' 或 'agent123'"
+Write-Host "   - 请在生产环境中立即修改所有账户的密码！"
+Write-Host "   - 建议使用强密码（至少8位，包含字母和数字）"
 Write-Host ""
 Write-Host "💡 提示:" -ForegroundColor Cyan
 Write-Host "   - 查看数据库: npm run db:studio"

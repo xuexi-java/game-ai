@@ -78,20 +78,38 @@ cd game-ai-cs
 
 ### 2. 配置环境变量
 
+**Docker 部署方式**（推荐）:
+
 ```bash
-# 复制环境变量示例文件
+# 在项目根目录执行
+# 仅需要配置后端环境变量（可选，用于生产环境）
+cp backend/.env.example backend/.env
+
+# 编辑 backend/.env 文件，根据实际情况修改配置
+# 注意：Docker 部署时，前端使用相对路径，不需要配置前端环境变量
+```
+
+⚠️ **重要**: Docker 部署时请确保修改以下配置：
+- `DATABASE_URL`: 数据库连接字符串（Docker 中会自动配置，但可以自定义）
+- `JWT_SECRET`: JWT 密钥（生产环境必须修改）
+- `DIFY_API_KEY`: Dify API 密钥（如果使用 AI 功能）
+- `DIFY_BASE_URL`: Dify 服务地址（如果使用 AI 功能）
+
+**本地开发方式**:
+
+```bash
+# 在项目根目录执行
 cp .env.example .env
 cp backend/.env.example backend/.env
-cp player-app/.env.example player-app/.env
-cp admin-portal/.env.example admin-portal/.env
+cp frontend/player-app/.env.example frontend/player-app/.env
+cp frontend/admin-portal/.env.example frontend/admin-portal/.env
 
 # 编辑 .env 文件，根据实际情况修改配置
 ```
 
-⚠️ **重要**: 请确保修改以下配置：
-- `DATABASE_URL`: 数据库连接字符串
-- `JWT_SECRET`: JWT 密钥（生产环境必须修改）
-- `OSS_*`: 阿里云 OSS 配置（如果使用文件上传功能）
+⚠️ **注意**: 
+- Docker 部署时，前端使用相对路径通过 Nginx 代理，**不需要**配置前端环境变量
+- 本地开发模式（`npm run dev`）才需要配置前端环境变量
 
 ### 3. 安装依赖
 
@@ -115,87 +133,218 @@ npm install
 ### 4. 启动数据库
 
 ```bash
-# 从项目根目录启动Docker服务
+# 在项目根目录执行
+cd game-ai-cs  # 确保在项目根目录
+
+# 方式一：使用 npm 脚本
 npm run docker:up
 
-# 或者
-docker-compose up -d
+# 方式二：直接使用 docker-compose
+docker-compose up -d postgres
 ```
+
+> 📍 **注意**: 所有 Docker 相关命令都需要在**项目根目录**执行
 
 ### 5. 初始化数据库
 
 ```bash
-# 从项目根目录
+# 在项目根目录执行
+cd game-ai-cs  # 确保在项目根目录
+
 npm run db:generate  # 生成Prisma Client
 npm run db:migrate   # 运行数据库迁移
 npm run db:seed      # 初始化种子数据
 ```
 
-### 6. 启动开发服务
+> 📍 **注意**: 
+> - 如果使用 Docker 部署，数据库迁移会在容器启动时自动执行，无需手动运行
+> - 这些命令需要在**项目根目录**执行
 
-#### 方式一：使用启动脚本（推荐）
+### 6. 启动服务
 
-**Windows 用户**:
+#### 方式一：使用 Docker 部署（推荐）
+
+> 📍 **重要提示**: 以下所有 `docker-compose` 命令都需要在**项目根目录**（`game-ai-cs/`）执行。
+
+**前置准备**:
+
+1. 确保已安装 Docker 和 Docker Compose
+   ```bash
+   # 检查 Docker 版本
+   docker --version
+   docker-compose --version
+   ```
+
+2. 配置环境变量（可选，用于生产环境）
+   ```bash
+   # 在项目根目录创建 .env 文件（如果还没有）
+   # 可以设置以下环境变量：
+   # JWT_SECRET=your-production-secret-key
+   # DIFY_API_KEY=your-dify-api-key
+   # DIFY_BASE_URL=your-dify-base-url
+   ```
+
+**部署步骤**:
+
+1. **进入项目根目录**
+   ```bash
+   cd game-ai-cs  # 或你的项目目录名
+   ```
+
+2. **停止并清理旧容器（如果存在）**
+   ```bash
+   # 在项目根目录执行
+   docker-compose down
+   ```
+
+3. **构建并启动所有服务**
+   ```bash
+   # 在项目根目录执行
+   # -d: 后台运行
+   # --build: 重新构建镜像
+   docker-compose up -d --build
+   ```
+
+   这个命令会：
+   - 构建 PostgreSQL 数据库容器
+   - 构建后端服务容器（包括生成 Prisma Client 和运行数据库迁移）
+   - 构建前端服务容器（玩家端和管理端）
+   - 启动所有服务并建立网络连接
+
+4. **检查服务状态**
+   ```bash
+   # 在项目根目录执行
+   docker-compose ps
+   ```
+
+   应该看到所有服务状态为 `Up`：
+   - `game-ai-cs-postgres` (数据库)
+   - `game-ai-cs-backend` (后端服务)
+   - `game-ai-cs-admin-portal` (管理端)
+   - `game-ai-cs-player-app` (玩家端)
+
+5. **初始化数据库种子数据（可选）**
+   ```bash
+   # 在项目根目录执行
+   # 这会创建默认的管理员和客服账户
+   docker-compose exec backend npx prisma db seed --schema=./prisma/schema.prisma
+   ```
+
+**服务访问地址**：
+- 玩家端: http://localhost:20101
+- 管理端: http://localhost:20102
+- 后端API: http://localhost:21101/api/v1
+- API文档: http://localhost:21101/api/v1/docs
+
+**常用管理命令**:
+
 ```bash
-# 启动所有服务（推荐方式）
-.\start.bat
+# 在项目根目录执行以下命令
+
+# 查看所有服务日志
+docker-compose logs -f
+
+# 查看特定服务日志
+docker-compose logs -f backend          # 后端日志
+docker-compose logs -f admin-portal     # 管理端日志
+docker-compose logs -f player-app       # 玩家端日志
+docker-compose logs -f postgres         # 数据库日志
+
+# 重启特定服务
+docker-compose restart backend
+docker-compose restart admin-portal
+docker-compose restart player-app
+
+# 停止所有服务（保留数据）
+docker-compose stop
+
+# 停止并删除所有容器（保留数据卷）
+docker-compose down
+
+# 停止并删除所有容器和数据卷（⚠️ 会删除数据库数据）
+docker-compose down -v
+
+# 重新构建特定服务
+docker-compose build backend
+docker-compose up -d backend
+
+# 进入容器内部（用于调试）
+docker-compose exec backend sh          # 进入后端容器
+docker-compose exec postgres psql -U postgres -d game_ai_cs  # 进入数据库
 ```
 
-启动脚本会自动执行以下步骤：
-1. ✅ 检查 Node.js 和 npm 环境
-2. ✅ 检查 Docker 环境，如果 Docker Desktop 未运行会自动启动
-3. ✅ 启动 Docker 服务 (PostgreSQL)
-4. ✅ 等待数据库就绪
-5. ✅ 启动后端服务（在独立窗口）
-6. ✅ 启动管理端前端（在独立窗口）
-7. ✅ 启动玩家端前端（在独立窗口）
-8. ✅ 显示服务访问地址
+**开发环境模式**:
 
-**启动顺序**：
-- 首先启动 Docker 服务（仅 PostgreSQL）
-- 然后启动后端服务（等待 3 秒）
-- 接着启动管理端前端（等待 2 秒）
-- 最后启动玩家端前端（等待 2 秒）
+如果需要使用开发模式（支持热重载）：
 
-**服务窗口**：
-- 每个服务都在独立的命令行窗口中运行
-- 关闭窗口将停止对应的服务
-- 可以单独查看每个服务的输出日志
+```bash
+# 在项目根目录执行
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
-**日志文件**：
-- 所有服务的日志都保存在 `logs` 文件夹中
-- `backend.log` - 后端服务日志
-- `admin.log` - 管理端日志
-- `player.log` - 玩家端日志
-- `*-error.log` - 各服务的错误日志
+**故障排查**:
 
-**注意**: 
-- 如果 Docker Desktop 未运行，脚本会自动尝试启动它（最多等待 45 秒）
-- 停止脚本窗口时，Docker 服务会继续运行。如需停止 Docker 服务，请运行 `docker-compose down`
-- 如需停止所有服务，请关闭各个服务窗口，然后运行 `docker-compose down` 停止 Docker 服务
+1. **查看服务日志**
+   ```bash
+   # 在项目根目录执行
+   docker-compose logs -f backend
+   ```
 
-#### 方式二：手动启动
+2. **检查容器状态**
+   ```bash
+   # 在项目根目录执行
+   docker-compose ps
+   ```
+
+3. **重新构建服务**
+   ```bash
+   # 在项目根目录执行
+   docker-compose build --no-cache backend
+   docker-compose up -d backend
+   ```
+
+4. **检查数据库连接**
+   ```bash
+   # 在项目根目录执行
+   docker-compose exec postgres pg_isready -U postgres -d game_ai_cs
+   ```
+
+**注意事项**:
+
+- ✅ 所有 `docker-compose` 命令必须在**项目根目录**执行
+- ✅ 首次启动会自动运行数据库迁移，无需手动执行
+- ✅ 前端使用相对路径，通过 Nginx 代理访问后端，无需配置环境变量
+- ✅ 数据库数据会持久化保存在 Docker 卷中，即使容器删除也不会丢失
+- ⚠️ 生产环境请务必修改 `JWT_SECRET` 环境变量
+- ⚠️ 生产环境建议使用 `docker-compose.prod.yml`（如果存在）进行部署
+
+#### 方式二：本地开发模式（需要本地安装 Node.js）
 
 **后端服务**:
 ```bash
 cd backend
 npm run start:dev
 ```
-后端服务运行在: http://localhost:21001
+后端服务运行在: http://localhost:21101
 
 **玩家端**:
 ```bash
-
+cd frontend/player-app
 npm run dev
 ```
-玩家端运行在: http://localhost:20002
+玩家端运行在: http://localhost:20101
 
 **管理端**:
 ```bash
-cd admin-portal
+cd frontend/admin-portal
 npm run dev
 ```
-管理端运行在: http://localhost:20001
+管理端运行在: http://localhost:20102
+
+**注意**: 本地开发模式需要：
+- 确保 Docker 服务（PostgreSQL）已启动：`docker-compose up -d postgres`
+- 配置正确的环境变量（`.env` 文件）
+- 运行数据库迁移和种子数据
 
 ## 📚 开发命令
 
@@ -223,10 +372,19 @@ npm run db:reset
 
 ### Docker相关
 
+> 📍 **执行位置**: 所有命令在**项目根目录**执行
+
 ```bash
+# 在项目根目录执行
 npm run docker:up      # 启动服务
 npm run docker:down    # 停止服务
 npm run docker:logs    # 查看日志
+
+# 或者直接使用 docker-compose 命令（在项目根目录）
+docker-compose up -d --build    # 构建并启动所有服务
+docker-compose down              # 停止所有服务
+docker-compose logs -f           # 查看所有服务日志
+docker-compose ps                # 查看服务状态
 ```
 
 ### 后端开发
@@ -258,10 +416,19 @@ npm run preview       # 预览生产构建
 
 数据库初始化后会创建以下默认账户：
 
-- **管理员**: `admin` / `admin123`
-- **客服**: `agent1` / `agent123`
+### 管理员账户
+- `admin` / `admin123` (系统管理员)
+- `admin2` / `admin123` (副管理员)
 
-⚠️ **重要**: 生产环境请务必修改这些默认密码！
+### 客服账户
+- `agent1` / `agent123` (客服001)
+- `agent2` / `agent123` (客服002)
+- `agent3` / `agent123` (客服003)
+
+⚠️ **重要**: 
+- 生产环境请务必修改所有账户的默认密码！
+- 建议使用强密码（至少8位，包含字母和数字）
+- 可通过管理端修改账户密码
 
 ## 📖 文档
 
@@ -304,26 +471,32 @@ npm run preview       # 预览生产构建
 ### 后端 (.env)
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:22001/game_ai_cs?schema=public"
+DATABASE_URL="postgresql://postgres:postgres@localhost:22101/game_ai_cs?schema=public"
 JWT_SECRET="your-secret-key"
 JWT_EXPIRES_IN="8h"
-PORT=21001
+PORT=21101
 NODE_ENV="development"
-FRONTEND_URL="http://localhost:20001,http://localhost:20002"
+FRONTEND_URL="http://localhost:20101,http://localhost:20102"
 ```
 
-### 玩家端 (.env)
+### 玩家端 (.env) - 仅本地开发需要
+
+> ⚠️ **注意**: Docker 部署时，前端使用相对路径，**不需要**配置这些环境变量。
 
 ```env
-VITE_API_BASE_URL=http://localhost:21001/api/v1
-VITE_WS_URL=ws://localhost:21001
+# 仅用于本地开发模式（npm run dev）
+VITE_API_BASE_URL=http://localhost:21101/api/v1
+VITE_WS_URL=http://localhost:21101
 ```
 
-### 管理端 (.env)
+### 管理端 (.env) - 仅本地开发需要
+
+> ⚠️ **注意**: Docker 部署时，前端使用相对路径，**不需要**配置这些环境变量。
 
 ```env
-VITE_API_BASE_URL=http://localhost:21001/api/v1
-VITE_WS_URL=ws://localhost:21001
+# 仅用于本地开发模式（npm run dev）
+VITE_API_BASE_URL=http://localhost:21101/api/v1
+VITE_WS_URL=ws://localhost:21101
 ```
 
 ## 🗄️ 数据库结构
@@ -379,11 +552,20 @@ npm run build
 
 ### Docker部署
 
+**生产环境部署**:
+
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+# 在项目根目录执行
+docker-compose -f docker-compose.prod.yml up -d --build
 ```
 
-> ⚠️ **注意**: 生产环境建议使用 PM2 或 systemd 管理进程，而不是直接运行 `npm start:prod`
+**标准部署**（开发/测试环境）:
+
+```bash
+# 在项目根目录执行
+docker-compose up -d --build
+```
+
 
 ## 🤝 贡献指南
 

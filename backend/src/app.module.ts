@@ -21,11 +21,13 @@ import { UserModule } from './user/user.module';
 import { IssueTypeModule } from './issue-type/issue-type.module';
 import { QuickReplyModule } from './quick-reply/quick-reply.module';
 import { LoggerModule } from './common/logger/logger.module';
+import { RedisModule } from './redis/redis.module';
 import { validate } from './common/config/env.validation';
 
 @Module({
   imports: [
     LoggerModule,
+    RedisModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],

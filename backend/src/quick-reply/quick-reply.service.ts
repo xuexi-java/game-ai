@@ -18,20 +18,16 @@ export class QuickReplyService {
   // ========== 分类管理 ==========
 
   /**
-   * 获取分类列表
+   * 获取分类列表 - 只返回当前用户自己创建的分类
    */
   async getCategories(userId: string, isAdmin: boolean) {
     try {
       const where: any = {
         isActive: true,
         deletedAt: null,
+        creatorId: userId, // ✅ 只查询当前用户创建的分类
       };
-
-      if (!isAdmin) {
-        // 普通用户只能看到全局分类和自己的分类
-        where.OR = [{ isGlobal: true }, { creatorId: userId }];
-      }
-      // 管理员可以看到全部分类（不限制条件）
+      // 取消管理员特殊权限，管理员也只能看到自己创建的分类
 
       const categories = await this.prisma.quickReplyCategory.findMany({
         where,
@@ -43,12 +39,13 @@ export class QuickReplyService {
         return [];
       }
 
-      // 批量查询所有分类的回复数量，提高性能
+      // 批量查询所有分类的回复数量（只统计当前用户的回复）
       const categoryIds = categories.map((cat) => cat.id);
       const replyCounts = await this.prisma.quickReply.groupBy({
         by: ['categoryId'],
         where: {
           categoryId: { in: categoryIds },
+          creatorId: userId, // ✅ 只统计当前用户的回复
           isActive: true,
           deletedAt: null,
         },
@@ -76,28 +73,25 @@ export class QuickReplyService {
   }
 
   /**
-   * 创建分类
+   * 创建分类 - 所有分类都是个人私有的
    */
   async createCategory(
     userId: string,
     isAdmin: boolean,
     createCategoryDto: CreateCategoryDto,
   ) {
-    // ⭐ 权限检查：只有管理员能创建全局分类
-    if (createCategoryDto.isGlobal && !isAdmin) {
-      throw new ForbiddenException('仅管理员可创建全局分类');
-    }
-
+    // ✅ 所有分类都是个人私有的，取消全局分类
     return this.prisma.quickReplyCategory.create({
       data: {
         ...createCategoryDto,
-        creatorId: createCategoryDto.isGlobal ? null : userId,
+        creatorId: userId, // 始终设置为当前用户
+        isGlobal: false, // 强制设置为false
       },
     });
   }
 
   /**
-   * 更新分类
+   * 更新分类 - 只能更新自己创建的分类
    */
   async updateCategory(
     categoryId: string,
@@ -109,34 +103,35 @@ export class QuickReplyService {
       where: { id: categoryId },
     });
 
-    // ⭐ 权限检查
-    this.validateCategoryAccess(category, userId, isAdmin);
-
-    // ⭐ 禁止非管理员修改全局标记
-    if (
-      updateCategoryDto.isGlobal !== undefined &&
-      !isAdmin &&
-      updateCategoryDto.isGlobal
-    ) {
-      throw new ForbiddenException('仅管理员可修改全局标记');
+    // ✅ 只能更新自己创建的分类
+    if (category.creatorId !== userId) {
+      throw new ForbiddenException('只能更新自己创建的分类');
     }
+
+    // ✅ 取消全局标记，强制设置为false
+    const updateData: any = {
+      ...updateCategoryDto,
+      isGlobal: false, // 强制设置为false
+    };
 
     return this.prisma.quickReplyCategory.update({
       where: { id: categoryId },
-      data: updateCategoryDto,
+      data: updateData,
     });
   }
 
   /**
-   * 删除分类（软删除）
+   * 删除分类 - 只能删除自己创建的分类
    */
   async deleteCategory(categoryId: string, userId: string, isAdmin: boolean) {
     const category = await this.prisma.quickReplyCategory.findUniqueOrThrow({
       where: { id: categoryId },
     });
 
-    // ⭐ 权限检查
-    this.validateCategoryAccess(category, userId, isAdmin);
+    // ✅ 只能删除自己创建的分类
+    if (category.creatorId !== userId) {
+      throw new ForbiddenException('只能删除自己创建的分类');
+    }
 
     return this.prisma.quickReplyCategory.update({
       where: { id: categoryId },
@@ -176,13 +171,18 @@ export class QuickReplyService {
       }
 
       if (query.categoryId) {
+        // ✅ 确保分类也是当前用户创建的
+        const category = await this.prisma.quickReplyCategory.findUnique({
+          where: { id: query.categoryId },
+        });
+        if (!category || category.creatorId !== userId) {
+          throw new ForbiddenException('无权访问此分类');
+        }
         where.categoryId = query.categoryId;
       }
 
-      // 权限过滤：用户只能看到全局回复和自己创建的回复
-      if (!isAdmin) {
-        where.OR = [{ isGlobal: true }, { creatorId: userId }];
-      }
+      // ✅ 修改：只查询当前用户创建的回复
+      where.creatorId = userId;
 
       // 只看收藏的回复
       if (query.onlyFavorites) {
@@ -347,50 +347,13 @@ export class QuickReplyService {
       });
       deduplicatedData = Array.from(uniqueRepliesByContent.values());
 
-      // ✅ 获取用户个人偏好（添加错误处理，避免表不存在时导致 500 错误）
-      let userPreferences: any[] = [];
-      let preferenceMap = new Map<
-        string,
-        { replyId: string; isActive: boolean | null; content: string | null }
-      >();
-      
-      try {
-        userPreferences = await (this.prisma as any).quickReplyUserPreference.findMany({
-          where: { userId },
-          select: {
-            replyId: true,
-            isActive: true,
-            content: true,
-          },
-        });
-        
-        preferenceMap = new Map(
-          userPreferences.map((pref: any) => [pref.replyId, pref])
-        );
-      } catch (error) {
-        // ✅ 如果查询个人偏好失败（表不存在等），记录警告但不影响主流程
-        console.warn('查询用户个人偏好失败，使用全局设置:', error);
-        // preferenceMap 保持为空 Map，所有回复使用全局设置
-      }
-
-      return {
-        data: deduplicatedData.map((reply) => {
-          const preference = preferenceMap.get(reply.id);
-
-          // ✅ 合并个人偏好：如果用户有个人偏好，使用个人偏好；否则使用全局状态
-          return {
-            ...reply,
-            isFavorited: favoriteIdsSet.has(reply.id),
-            // 个人启用状态：如果有个人偏好，使用个人偏好；否则使用全局 isActive
-            isActive: preference?.isActive !== null && preference?.isActive !== undefined
-              ? preference.isActive
-              : reply.isActive,
-            // 个人内容：如果有个人修改的内容，使用个人内容；否则使用全局内容
-            content: preference?.content || reply.content,
-            // 标记是否有个人偏好
-            hasPersonalPreference: !!preference,
-          };
-        }),
+       // ✅ 返回数据（不需要个人偏好，因为所有回复都是个人的）
+       return {
+         data: deduplicatedData.map((reply) => ({
+           ...reply,
+           isFavorited: favoriteIdsSet.has(reply.id),
+           hasPersonalPreference: false, // 所有回复都是个人的，不需要个人偏好
+         })),
         pagination: {
           total: deduplicatedData.length, // 使用去重后的数量
           page,
@@ -410,39 +373,36 @@ export class QuickReplyService {
   }
 
   /**
-   * 创建快捷回复
+   * 创建快捷回复 - 所有回复都是个人私有的
    */
   async createReply(
     userId: string,
     isAdmin: boolean,
     createReplyDto: CreateReplyDto,
   ) {
-    // 验证分类存在且有访问权限
+    // 验证分类存在且是当前用户创建的
     const category = await this.prisma.quickReplyCategory.findUniqueOrThrow({
       where: { id: createReplyDto.categoryId },
     });
 
-    // ⭐ 检查分类访问权限
-    if (!category.isGlobal && category.creatorId !== userId && !isAdmin) {
-      throw new ForbiddenException('无权在此分类中添加回复');
+    // ✅ 只能在自己的分类中创建回复
+    if (category.creatorId !== userId) {
+      throw new ForbiddenException('只能在自己的分类中创建回复');
     }
 
-    // ⭐ 权限检查：只有管理员能创建全局回复
-    if (createReplyDto.isGlobal && !isAdmin) {
-      throw new ForbiddenException('仅管理员可创建全局回复');
-    }
-
+    // ✅ 所有回复都是个人私有的
     return this.prisma.quickReply.create({
       data: {
         ...createReplyDto,
-        creatorId: createReplyDto.isGlobal ? null : userId,
+        creatorId: userId, // 始终设置为当前用户
+        isGlobal: false, // 强制设置为false
       },
       include: { category: true },
     });
   }
 
   /**
-   * 更新快捷回复
+   * 更新快捷回复 - 只能更新自己创建的回复
    */
   async updateReply(
     replyId: string,
@@ -450,109 +410,93 @@ export class QuickReplyService {
     isAdmin: boolean,
     updateReplyDto: UpdateReplyDto,
   ) {
-    const reply = await this.prisma.quickReply.findUniqueOrThrow({
-      where: { id: replyId },
-    });
+    try {
+      const reply = await this.prisma.quickReply.findUniqueOrThrow({
+        where: { id: replyId },
+      });
 
-    // ⭐ 权限检查：管理员可以修改所有回复，非管理员只能修改自己创建的回复
-    // 但是，非管理员可以为任何回复设置个人偏好（只影响自己）
-    if (!isAdmin && reply.creatorId !== userId) {
-      // ✅ 如果不是管理员且不是创建者，但只是想设置个人偏好，允许
-      // 检查是否只是设置个人偏好（只更新 isActive 或 content，且不更新其他字段）
-      const isPersonalPreference = 
-        (updateReplyDto.isActive !== undefined && Object.keys(updateReplyDto).length === 1) ||
-        (updateReplyDto.content !== undefined && 
-         (Object.keys(updateReplyDto).length === 1 || 
-          (Object.keys(updateReplyDto).length === 2 && 'isActive' in updateReplyDto && 'content' in updateReplyDto))) ||
-        (updateReplyDto.isActive !== undefined && updateReplyDto.content !== undefined && 
-         Object.keys(updateReplyDto).length === 2 && !('isGlobal' in updateReplyDto) && !('categoryId' in updateReplyDto));
-      
-      if (isPersonalPreference) {
-        // ✅ 允许设置个人偏好
-        return this.updateUserPreference(replyId, userId, {
-          isActive: updateReplyDto.isActive,
-          content: updateReplyDto.content,
-        });
+      // ✅ 只能更新自己创建的回复（处理 creatorId 为 null 的情况）
+      if (!reply.creatorId || reply.creatorId !== userId) {
+        throw new ForbiddenException('只能更新自己创建的快捷回复');
       }
-      
-      throw new ForbiddenException('无权修改此回复');
+
+      // ✅ 如果更新了分类，确保新分类也是当前用户创建的
+      if (updateReplyDto.categoryId && updateReplyDto.categoryId !== reply.categoryId) {
+        try {
+          const newCategory = await this.prisma.quickReplyCategory.findUniqueOrThrow({
+            where: { id: updateReplyDto.categoryId },
+          });
+          if (!newCategory.creatorId || newCategory.creatorId !== userId) {
+            throw new ForbiddenException('只能移动到自己的分类');
+          }
+        } catch (error: any) {
+          if (error.code === 'P2025') {
+            throw new NotFoundException('分类不存在');
+          }
+          throw error;
+        }
+      }
+
+      // ✅ 构建更新数据，只包含实际要更新的字段（过滤掉 undefined）
+      const updateData: any = {
+        isGlobal: false, // 强制设置为false
+      };
+
+      // 只添加有值的字段
+      if (updateReplyDto.content !== undefined) {
+        updateData.content = updateReplyDto.content;
+      }
+      if (updateReplyDto.categoryId !== undefined) {
+        updateData.categoryId = updateReplyDto.categoryId;
+      }
+      if (updateReplyDto.isActive !== undefined) {
+        updateData.isActive = updateReplyDto.isActive;
+      }
+      if (updateReplyDto.sortOrder !== undefined) {
+        updateData.sortOrder = updateReplyDto.sortOrder;
+      }
+
+      // 确保至少有一个字段要更新（除了 isGlobal）
+      const fieldsToUpdate = Object.keys(updateData).filter(key => key !== 'isGlobal');
+      if (fieldsToUpdate.length === 0) {
+        // 如果没有要更新的字段，直接返回当前记录
+        const currentReply = await this.prisma.quickReply.findUnique({
+          where: { id: replyId },
+          include: { category: true },
+        });
+        if (!currentReply) {
+          throw new NotFoundException('快捷回复不存在');
+        }
+        return currentReply;
+      }
+
+      return this.prisma.quickReply.update({
+        where: { id: replyId },
+        data: updateData,
+        include: { category: true },
+      });
+    } catch (error: any) {
+      // 处理 Prisma 的 NotFoundError (P2025)
+      if (error.code === 'P2025') {
+        throw new NotFoundException('快捷回复不存在');
+      }
+      // 重新抛出其他错误
+      throw error;
     }
-
-    // ⭐ 权限检查：非管理员不能修改全局标记
-    if (
-      updateReplyDto.isGlobal !== undefined &&
-      !isAdmin &&
-      updateReplyDto.isGlobal
-    ) {
-      throw new ForbiddenException('仅管理员可修改全局标记');
-    }
-
-    // ✅ 管理员或创建者：更新全局回复
-    return this.prisma.quickReply.update({
-      where: { id: replyId },
-      data: updateReplyDto,
-      include: { category: true },
-    });
   }
 
-  /**
-   * 更新用户个人偏好
-   */
-  async updateUserPreference(
-    replyId: string,
-    userId: string,
-    updateData: { isActive?: boolean; content?: string },
-  ) {
-    // 检查回复是否存在
-    await this.prisma.quickReply.findUniqueOrThrow({
-      where: { id: replyId },
-    });
-
-    // 使用 upsert 创建或更新个人偏好
-    return (this.prisma as any).quickReplyUserPreference.upsert({
-      where: {
-        userId_replyId: {
-          userId,
-          replyId,
-        },
-      },
-      create: {
-        userId,
-        replyId,
-        isActive: updateData.isActive,
-        content: updateData.content,
-      },
-      update: {
-        isActive: updateData.isActive !== undefined ? updateData.isActive : undefined,
-        content: updateData.content !== undefined ? updateData.content : undefined,
-        updatedAt: new Date(),
-      },
-    });
-  }
 
   /**
-   * 删除用户个人偏好（恢复为全局状态）
-   */
-  async deleteUserPreference(replyId: string, userId: string) {
-    return (this.prisma as any).quickReplyUserPreference.deleteMany({
-      where: {
-        userId,
-        replyId,
-      },
-    });
-  }
-
-  /**
-   * 删除快捷回复（软删除）
+   * 删除快捷回复 - 只能删除自己创建的回复
    */
   async deleteReply(replyId: string, userId: string, isAdmin: boolean) {
     const reply = await this.prisma.quickReply.findUniqueOrThrow({
       where: { id: replyId },
     });
 
-    // ⭐ 权限检查
-    if (!isAdmin && reply.creatorId !== userId) {
-      throw new ForbiddenException('无权删除此回复');
+    // ✅ 只能删除自己创建的回复
+    if (reply.creatorId !== userId) {
+      throw new ForbiddenException('只能删除自己创建的快捷回复');
     }
 
     return this.prisma.quickReply.update({
@@ -672,18 +616,6 @@ export class QuickReplyService {
 
   // ========== 辅助方法 ==========
 
-  /**
-   * 验证分类访问权限
-   */
-  private validateCategoryAccess(
-    category: any,
-    userId: string,
-    isAdmin: boolean,
-  ): void {
-    if (!category.isGlobal && category.creatorId !== userId && !isAdmin) {
-      throw new ForbiddenException('无权访问此分类');
-    }
-  }
 
   /**
    * 构建排序条件

@@ -33,10 +33,10 @@ async function bootstrap() {
 
   // CORS 配置 - 同时兼容 .env 中的 FRONTEND_URL 和默认本地域名
   const defaultOrigins = [
-    'http://localhost:20001',
-    'http://localhost:20002',
-    'http://127.0.0.1:20001',
-    'http://127.0.0.1:20002',
+    'http://localhost:20101',
+    'http://localhost:20102',
+    'http://127.0.0.1:20101',
+    'http://127.0.0.1:20102',
   ];
   const envOrigins =
     process.env.FRONTEND_URL?.split(',')
@@ -94,7 +94,7 @@ async function bootstrap() {
     },
   });
 
-  const port = process.env.PORT || 21001;
+  const port = process.env.PORT || 21101;
   await app.listen(port);
   // 使用环境变量或默认值构建 baseUrl（用于日志输出）
   const host = process.env.HOST || 'localhost';
