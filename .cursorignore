@@ -1,0 +1,36 @@
+# --- 核心忽略项 ---
+# 依赖库：这是产生噪音最大的地方，必须忽略
+node_modules/
+
+# Git 版本控制文件
+.git/
+
+# 环境变量：涉及敏感信息，通常不需要 AI 索引
+.env
+.env.local
+
+# --- 构建与输出 ---
+# 打包生成的代码，AI 不需要读，它只需要读源码
+dist/
+build/
+out/
+
+# --- 日志与临时文件 ---
+# 你的截图显示根目录下有一个 logs 文件夹
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+**/*.log
+
+# --- 测试报告与文档 ---
+# 截图显示 tests/reports 下有很多自动生成的 md 文件
+# 忽略它们可以防止 AI 在回答问题时混淆“现在的代码”和“以前的报告”
+tests/reports/
+coverage/
+
+# --- 锁定文件 ---
+# 这些文件通常有几千行，全是版本号，没有逻辑，会占满索引空间
+package-lock.json
+pnpm-lock.yaml
+yarn.lock# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
