@@ -8,13 +8,14 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger, UseGuards, Inject, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessageService } from '../message/message.service';
 import { TicketService } from '../ticket/ticket.service';
-import { Inject, forwardRef } from '@nestjs/common';
+import { forwardRef } from '@nestjs/common';
+import Redis from 'ioredis';
 
 @WebSocketGateway({
   cors: {
@@ -30,12 +31,14 @@ import { Inject, forwardRef } from '@nestjs/common';
   namespace: '/',
 })
 export class WebsocketGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit
 {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(WebsocketGateway.name);
+  
+  // 保留内存 Map 作为缓存（提高性能）
   private connectedClients = new Map<
     string,
     {
@@ -49,6 +52,13 @@ export class WebsocketGateway
   private playerSessions = new Map<string, string>(); // clientId -> sessionId
   private heartbeatIntervals = new Map<string, NodeJS.Timeout>(); // clientId -> interval
 
+  // Redis Key 前缀
+  private readonly REDIS_PREFIX = {
+    CLIENT: 'ws:client:',
+    PLAYER_SESSION: 'ws:player:',
+    AGENT_ONLINE: 'ws:agent:online:',
+  };
+
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
@@ -56,7 +66,104 @@ export class WebsocketGateway
     private messageService: MessageService,
     @Inject(forwardRef(() => TicketService))
     private ticketService: TicketService,
+    @Inject('REDIS_CLIENT')
+    private redis: Redis,
   ) {}
+
+  async onModuleInit() {
+    // 服务启动时恢复状态
+    await this.restoreStateFromRedis();
+  }
+
+  // 从 Redis 恢复状态
+  private async restoreStateFromRedis() {
+    try {
+      this.logger.log('开始从 Redis 恢复 WebSocket 状态...');
+
+      // 恢复在线客服状态
+      const onlineAgentKeys = await this.redis.keys(`${this.REDIS_PREFIX.AGENT_ONLINE}*`);
+      for (const key of onlineAgentKeys) {
+        const agentId = key.replace(this.REDIS_PREFIX.AGENT_ONLINE, '');
+        const agentData = await this.redis.get(key);
+        if (agentData) {
+          try {
+            const data = JSON.parse(agentData);
+            // 更新数据库中的在线状态
+            await this.prisma.user.update({
+              where: { id: agentId },
+              data: { isOnline: true },
+            });
+            this.logger.log(`恢复客服在线状态: ${agentId}`);
+          } catch (error) {
+            this.logger.warn(`恢复客服状态失败: ${agentId}`, error);
+          }
+        }
+      }
+
+      // 清理过期的连接数据（超过24小时）
+      const allClientKeys = await this.redis.keys(`${this.REDIS_PREFIX.CLIENT}*`);
+      for (const key of allClientKeys) {
+        const ttl = await this.redis.ttl(key);
+        if (ttl === -1) {
+          // 没有过期时间的 key，设置24小时过期
+          await this.redis.expire(key, 86400);
+        }
+      }
+
+      this.logger.log('WebSocket 状态恢复完成');
+    } catch (error) {
+      this.logger.error(`恢复状态失败: ${error.message}`, error.stack);
+    }
+  }
+
+  // 保存客户端信息到 Redis
+  private async saveClientToRedis(clientId: string, clientInfo: any) {
+    const key = `${this.REDIS_PREFIX.CLIENT}${clientId}`;
+    await this.redis.setex(key, 86400, JSON.stringify(clientInfo)); // 24小时过期
+  }
+
+  // 从 Redis 获取客户端信息
+  private async getClientFromRedis(clientId: string) {
+    const key = `${this.REDIS_PREFIX.CLIENT}${clientId}`;
+    const data = await this.redis.get(key);
+    return data ? JSON.parse(data) : null;
+  }
+
+  // 删除 Redis 中的客户端信息
+  private async deleteClientFromRedis(clientId: string) {
+    const key = `${this.REDIS_PREFIX.CLIENT}${clientId}`;
+    await this.redis.del(key);
+  }
+
+  // 保存玩家会话绑定到 Redis
+  private async savePlayerSessionToRedis(clientId: string, sessionId: string) {
+    const key = `${this.REDIS_PREFIX.PLAYER_SESSION}${clientId}`;
+    await this.redis.setex(key, 86400, sessionId); // 24小时过期
+  }
+
+  // 从 Redis 获取玩家会话
+  private async getPlayerSessionFromRedis(clientId: string): Promise<string | null> {
+    const key = `${this.REDIS_PREFIX.PLAYER_SESSION}${clientId}`;
+    return await this.redis.get(key);
+  }
+
+  // 删除 Redis 中的玩家会话
+  private async deletePlayerSessionFromRedis(clientId: string) {
+    const key = `${this.REDIS_PREFIX.PLAYER_SESSION}${clientId}`;
+    await this.redis.del(key);
+  }
+
+  // 保存客服在线状态到 Redis
+  private async saveAgentOnlineToRedis(agentId: string, agentInfo: any) {
+    const key = `${this.REDIS_PREFIX.AGENT_ONLINE}${agentId}`;
+    await this.redis.setex(key, 86400, JSON.stringify(agentInfo)); // 24小时过期
+  }
+
+  // 删除 Redis 中的客服在线状态
+  private async deleteAgentOnlineFromRedis(agentId: string) {
+    const key = `${this.REDIS_PREFIX.AGENT_ONLINE}${agentId}`;
+    await this.redis.del(key);
+  }
 
   async handleConnection(client: Socket) {
     try {
@@ -76,12 +183,16 @@ export class WebsocketGateway
           });
 
           if (user && !user.deletedAt) {
-            this.connectedClients.set(client.id, {
+            const clientInfo = {
               userId: user.id,
               role: user.role,
               username: user.username,
               realName: user.realName || undefined,
-            });
+            };
+
+            // 保存到内存和 Redis
+            this.connectedClients.set(client.id, clientInfo);
+            await this.saveClientToRedis(client.id, clientInfo);
 
             // 更新用户在线状态
             if (user.role === 'AGENT') {
@@ -89,6 +200,14 @@ export class WebsocketGateway
                 where: { id: user.id },
                 data: { isOnline: true },
               });
+              
+              // 保存客服在线状态到 Redis
+              await this.saveAgentOnlineToRedis(user.id, {
+                username: user.username,
+                realName: user.realName || undefined,
+                avatar: user.avatar || undefined,
+              });
+
               this.notifyAgentStatusChange(user.id, true, {
                 username: user.username,
                 realName: user.realName || undefined,
@@ -111,7 +230,9 @@ export class WebsocketGateway
         }
       } else {
         // 玩家端连接（无token）
-        this.connectedClients.set(client.id, {});
+        const clientInfo = {};
+        this.connectedClients.set(client.id, clientInfo);
+        await this.saveClientToRedis(client.id, clientInfo);
         this.logger.log(`玩家连接: ${client.id}`);
 
         // 设置心跳检测
@@ -128,6 +249,9 @@ export class WebsocketGateway
     // 清除心跳检测
     this.clearHeartbeat(client.id);
 
+    // 从 Redis 删除客户端信息
+    await this.deleteClientFromRedis(client.id);
+
     if (clientInfo?.userId) {
       // 更新用户离线状态
       const user = await this.prisma.user
@@ -136,7 +260,11 @@ export class WebsocketGateway
           data: { isOnline: false },
         })
         .catch(() => {});
+
       if (user?.role === 'AGENT') {
+        // 从 Redis 删除客服在线状态
+        await this.deleteAgentOnlineFromRedis(clientInfo.userId);
+        
         this.notifyAgentStatusChange(clientInfo.userId, false, {
           username: clientInfo.username,
           realName: clientInfo.realName,
@@ -150,6 +278,7 @@ export class WebsocketGateway
       if (sessionId) {
         this.logger.log(`玩家断开连接，会话 ${sessionId} 保持在队列中，等待客服处理`);
         this.playerSessions.delete(client.id);
+        await this.deletePlayerSessionFromRedis(client.id);
       }
     }
 
@@ -307,9 +436,13 @@ export class WebsocketGateway
     if (!clientInfo?.userId) {
       // 玩家端
       this.playerSessions.set(client.id, data.sessionId);
+      // 保存玩家会话到 Redis
+      await this.savePlayerSessionToRedis(client.id, data.sessionId);
       const existingInfo = this.connectedClients.get(client.id);
       if (existingInfo) {
         existingInfo.sessionId = data.sessionId;
+        // 保存玩家会话到 Redis
+        await this.saveClientToRedis(client.id, existingInfo);
       }
     }
 

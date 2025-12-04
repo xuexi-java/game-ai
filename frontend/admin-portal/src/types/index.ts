@@ -168,6 +168,8 @@ export interface DashboardMetrics {
     tickets: number;
     resolved: number;
     avgSatisfaction: number;
+    aiInterceptionRate?: number;
+    transferRate?: number;
   }>;
 }
 

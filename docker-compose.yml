@@ -19,6 +19,23 @@ services:
       - game-ai-cs-network
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: game-ai-cs-redis
+    ports:
+      - "22102:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - game-ai-cs-network
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -33,6 +50,8 @@ services:
       - FRONTEND_URL=http://localhost:20101,http://localhost:20102
       - DIFY_API_KEY=${DIFY_API_KEY:-}
       - DIFY_BASE_URL=${DIFY_BASE_URL:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "21101:21101"
     volumes:
@@ -41,6 +60,8 @@ services:
       - ./backend/prisma:/app/prisma
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - game-ai-cs-network
@@ -74,6 +95,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   game-ai-cs-network:

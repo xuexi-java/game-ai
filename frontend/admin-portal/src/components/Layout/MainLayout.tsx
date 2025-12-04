@@ -165,7 +165,10 @@ const MainLayout: React.FC = () => {
         />
       </Sider>
 
-      <Layout className="site-layout">
+      <Layout
+        className="site-layout"
+        style={{ marginLeft: collapsed ? 80 : 200, transition: 'margin-left 0.2s' }}
+      >
         <Header className="layout-header">
           <div className="header-left">
             <Button

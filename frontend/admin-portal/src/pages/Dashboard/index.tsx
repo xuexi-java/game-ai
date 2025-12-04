@@ -154,6 +154,164 @@ const DashboardPage: React.FC = () => {
     };
   };
 
+  // 转人工率趋势图表配置
+  const getTransferRateChartOption = () => {
+    if (!metrics?.dailyStats) return {};
+
+    return {
+      title: {
+        text: '转人工率趋势',
+        left: 'center',
+        textStyle: {
+          fontSize: 16,
+          fontWeight: 'normal',
+        },
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const param = params[0];
+          return `${param.name}<br/>${param.seriesName}: ${param.value}%`;
+        },
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: metrics.dailyStats.map((item) =>
+          dayjs(item.date).format('MM-DD'),
+        ),
+      },
+      yAxis: {
+        type: 'value',
+        name: '转人工率 (%)',
+        min: 0,
+        max: 100,
+        axisLabel: {
+          formatter: '{value}%',
+        },
+      },
+      series: [
+        {
+          name: '转人工率',
+          type: 'line',
+          smooth: true,
+          data: metrics.dailyStats.map((item) => item.transferRate || 0),
+          itemStyle: {
+            color: '#ff4d4f',
+          },
+          areaStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: 'rgba(255, 77, 79, 0.3)' },
+                { offset: 1, color: 'rgba(255, 77, 79, 0.1)' },
+              ],
+            },
+          },
+          markPoint: {
+            data: [
+              { type: 'max', name: '最大值' },
+              { type: 'min', name: '最小值' },
+            ],
+          },
+          markLine: {
+            data: [{ type: 'average', name: '平均值' }],
+          },
+        },
+      ],
+    };
+  };
+
+  // AI拦截率趋势图表配置
+  const getAIInterceptionRateChartOption = () => {
+    if (!metrics?.dailyStats) return {};
+
+    return {
+      title: {
+        text: 'AI拦截率趋势',
+        left: 'center',
+        textStyle: {
+          fontSize: 16,
+          fontWeight: 'normal',
+        },
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const param = params[0];
+          return `${param.name}<br/>${param.seriesName}: ${param.value}%`;
+        },
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: metrics.dailyStats.map((item) =>
+          dayjs(item.date).format('MM-DD'),
+        ),
+      },
+      yAxis: {
+        type: 'value',
+        name: '拦截率 (%)',
+        min: 0,
+        max: 100,
+        axisLabel: {
+          formatter: '{value}%',
+        },
+      },
+      series: [
+        {
+          name: 'AI拦截率',
+          type: 'line',
+          smooth: true,
+          data: metrics.dailyStats.map(
+            (item) => item.aiInterceptionRate || 0,
+          ),
+          itemStyle: {
+            color: '#52c41a',
+          },
+          areaStyle: {
+            color: {
+              type: 'linear',
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: 'rgba(82, 196, 26, 0.3)' },
+                { offset: 1, color: 'rgba(82, 196, 26, 0.1)' },
+              ],
+            },
+          },
+          markPoint: {
+            data: [
+              { type: 'max', name: '最大值' },
+              { type: 'min', name: '最小值' },
+            ],
+          },
+          markLine: {
+            data: [{ type: 'average', name: '平均值' }],
+          },
+        },
+      ],
+    };
+  };
+
   // 客服统计图表配置
   const getAgentStatsChartOption = () => {
     if (!metrics?.agentStats) return {};
@@ -368,6 +526,26 @@ const DashboardPage: React.FC = () => {
             <ReactECharts
               key="agent-stats"
               option={getAgentStatsChartOption()}
+              style={{ height: '400px' }}
+              opts={{ renderer: 'canvas' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="AI拦截率趋势">
+            <ReactECharts
+              key="ai-interception-rate"
+              option={getAIInterceptionRateChartOption()}
+              style={{ height: '400px' }}
+              opts={{ renderer: 'canvas' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="转人工率趋势">
+            <ReactECharts
+              key="transfer-rate"
+              option={getTransferRateChartOption()}
               style={{ height: '400px' }}
               opts={{ renderer: 'canvas' }}
             />

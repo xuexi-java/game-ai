@@ -555,6 +555,10 @@ const ChatPage = () => {
   const isAgentMode = session?.agentId || session?.status === 'IN_PROGRESS';
   // 如果状态是 QUEUED，说明正在排队（即使 queuePosition 可能暂时为 null）
   const isQueued = session?.status === 'QUEUED';
+  // 如果状态是 PENDING，说明正在 AI 对话阶段
+  const isAIChatting = session?.status === 'PENDING';
+  // 显示结束会话按钮的条件：AI对话中、排队中、或客服已接入
+  const showEndSessionButton = isAIChatting || isQueued || isAgentMode;
   const issueTypeOptions = session?.ticket?.issueTypes || [];
 
   // 获取工单状态显示
@@ -931,30 +935,32 @@ const ChatPage = () => {
               <FileUpload onFileSelect={handleFileSelect} />
               <EmojiPicker onEmojiSelect={handleEmojiSelect} />
             </div>
-            {showTransferButton && (
-              <Button
-                size="small"
-                icon={<CustomerServiceOutlined />}
-                className="transfer-btn-v3"
-                onClick={handleTransferToAgent}
-                loading={transferring}
-                disabled={transferring}
-              >
-                转人工
-              </Button>
-            )}
-            {/* 客服模式或排队中时显示结束按钮 */}
-            {(isAgentMode || isQueued) && (
-              <Button
-                size="small"
-                icon={<PoweroffOutlined />}
-                className="end-btn-v3"
-                onClick={handleCloseChat}
-                disabled={transferring}
-              >
-                结束会话
-              </Button>
-            )}
+            <div className="toolbar-right-v3">
+              {showTransferButton && (
+                <Button
+                  size="small"
+                  icon={<CustomerServiceOutlined />}
+                  className="transfer-btn-v3"
+                  onClick={handleTransferToAgent}
+                  loading={transferring}
+                  disabled={transferring}
+                >
+                  转人工
+                </Button>
+              )}
+              {/* AI对话中、排队中或客服已接入时显示结束按钮 */}
+              {showEndSessionButton && (
+                <Button
+                  size="small"
+                  icon={<PoweroffOutlined />}
+                  className="end-btn-v3"
+                  onClick={handleCloseChat}
+                  disabled={transferring || session?.status === 'CLOSED'}
+                >
+                  结束会话
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Input Area */}

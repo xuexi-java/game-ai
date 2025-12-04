@@ -28,36 +28,28 @@ export class AuthService {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
-    // 密码验证：支持明文密码（开发环境）和 bcrypt 哈希密码（生产环境）
+    // 密码验证：只支持 BCrypt 哈希密码（生产环境标准）
     let isPasswordValid = false;
 
-    // 1. 优先检查是否是开发环境的默认账户（无论数据库中的密码格式如何）
-    if (
-      (user.username === 'admin' && password === 'admin123') ||
-      (user.username === 'agent1' && password === 'agent123')
-    ) {
-      isPasswordValid = true;
+    if (!user.password) {
+      throw new UnauthorizedException('用户名或密码错误');
     }
-    // 2. 检查是否是 bcrypt 哈希密码（优先验证 bcrypt，因为这是标准格式）
-    else if (user.password && user.password.startsWith('$2b$')) {
+
+    // 检查是否是 bcrypt 哈希密码
+    if (user.password.startsWith('$2b$') || user.password.startsWith('$2a$') || user.password.startsWith('$2y$')) {
       try {
         isPasswordValid = await bcrypt.compare(password, user.password);
       } catch (error) {
         console.error('[Auth] 密码验证错误:', error);
         isPasswordValid = false;
       }
-    }
-    // 3. 如果密码字段不是 bcrypt 格式，尝试明文匹配（仅开发环境）
-    else if (user.password && user.password === password) {
-      isPasswordValid = true;
-    }
-    // 4. 如果以上都不匹配，尝试用 bcrypt 验证（以防密码格式判断错误）
-    else if (user.password) {
+    } else {
+      // 如果不是 bcrypt 格式，尝试用 bcrypt 验证（兼容性处理）
       try {
-        // 尝试 bcrypt 验证（即使不是 $2b$ 开头，有些情况下可能也能验证）
         isPasswordValid = await bcrypt.compare(password, user.password);
       } catch (error) {
-        // 忽略错误，继续其他验证
+        // 忽略错误
+        isPasswordValid = false;
       }
     }
 

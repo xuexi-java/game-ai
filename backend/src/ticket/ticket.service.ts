@@ -773,8 +773,16 @@ export class TicketService {
         (session) => session.agentId !== null,
       );
 
-      // 只有在客服曾经接入过（有客服消息或会话被分配给客服）的情况下，才标记为已解决
-      if (hasAgentMessages > 0 || hasAssignedAgent) {
+      // 检查是否有 AI 消息（说明 AI 曾经处理过）
+      const hasAIMessages = await this.prisma.message.count({
+        where: {
+          sessionId: { in: ticket.sessions.map((s) => s.id) },
+          senderType: 'AI',
+        },
+      });
+
+      // 更新工单状态的辅助函数
+      const updateTicketToResolved = async () => {
         await this.prisma.ticket.update({
           where: { id: ticketId },
           data: {
@@ -808,8 +816,16 @@ export class TicketService {
           // WebSocket 通知失败不影响状态更新
           console.warn('WebSocket 通知失败:', error);
         }
+      };
+
+      // 如果有客服介入（有客服消息或会话被分配给客服），标记为已解决
+      if (hasAgentMessages > 0 || hasAssignedAgent) {
+        await updateTicketToResolved();
+      } else if (hasAIMessages > 0) {
+        // 如果有 AI 消息但没有客服介入，说明是 AI 解决的，也应该标记为 RESOLVED
+        await updateTicketToResolved();
       } else {
-        // 如果没有客服消息且没有分配给客服，只是玩家退出，将工单状态改为 WAITING
+        // 如果没有客服消息、没有分配给客服、也没有 AI 消息，只是玩家退出，将工单状态改为 WAITING
         // 这样工单会继续等待客服处理
         await this.prisma.ticket.update({
           where: { id: ticketId },

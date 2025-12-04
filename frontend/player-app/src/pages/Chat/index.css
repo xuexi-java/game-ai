@@ -279,6 +279,12 @@
   align-items: center;
 }
 
+.toolbar-right-v3 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .toolbar-btn {
   color: #6b7280;
   padding: 6px;

@@ -203,6 +203,9 @@ export class DashboardService {
         resolved: number;
         ratingSum: number;
         ratingCount: number;
+        totalSessions: number;
+        aiResolvedSessions: number;
+        transferredSessions: number;
       }
     > = {};
     for (
@@ -215,35 +218,88 @@ export class DashboardService {
         resolved: 0,
         ratingSum: 0,
         ratingCount: 0,
+        totalSessions: 0,
+        aiResolvedSessions: 0,
+        transferredSessions: 0,
       };
     }
 
     ticketsForDaily.forEach((ticket) => {
       const key = this.formatDate(ticket.createdAt);
       if (!dailyMap[key]) {
-        dailyMap[key] = {
-          tickets: 0,
-          resolved: 0,
-          ratingSum: 0,
-          ratingCount: 0,
-        };
-      }
-      dailyMap[key].tickets += 1;
+      dailyMap[key] = {
+        tickets: 0,
+        resolved: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        totalSessions: 0,
+        aiResolvedSessions: 0,
+        transferredSessions: 0,
+      };
+    }
+    dailyMap[key].tickets += 1;
       if (ticket.status === 'RESOLVED') {
         dailyMap[key].resolved += 1;
+      }
+    });
+
+    // 统计每日会话数据（用于计算 AI 拦截率）
+    const sessionsForDaily = await this.prisma.session.findMany({
+      where: {
+        ...sessionWhere,
+        status: 'CLOSED',
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        agentId: true,
+        messages: {
+          where: { senderType: 'AI' },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+
+    sessionsForDaily.forEach((session) => {
+      const key = this.formatDate(session.createdAt);
+      if (!dailyMap[key]) {
+      dailyMap[key] = {
+        tickets: 0,
+        resolved: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        totalSessions: 0,
+        aiResolvedSessions: 0,
+        transferredSessions: 0,
+      };
+    }
+      dailyMap[key].totalSessions += 1;
+
+      // 判断是否是 AI 解决的：没有 agentId 且有 AI 消息
+      if (!session.agentId && session.messages.length > 0) {
+        dailyMap[key].aiResolvedSessions += 1;
+      }
+
+      // 判断是否是转人工的：有 agentId
+      if (session.agentId) {
+        dailyMap[key].transferredSessions += 1;
       }
     });
 
     satisfactionRatings.forEach((rating) => {
       const key = this.formatDate(rating.createdAt);
       if (!dailyMap[key]) {
-        dailyMap[key] = {
-          tickets: 0,
-          resolved: 0,
-          ratingSum: 0,
-          ratingCount: 0,
-        };
-      }
+      dailyMap[key] = {
+        tickets: 0,
+        resolved: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        totalSessions: 0,
+        aiResolvedSessions: 0,
+        transferredSessions: 0,
+      };
+    }
       dailyMap[key].ratingSum += rating.rating;
       dailyMap[key].ratingCount += 1;
     });
@@ -259,6 +315,18 @@ export class DashboardService {
           avgSatisfaction:
             stat.ratingCount > 0
               ? Math.round((stat.ratingSum / stat.ratingCount) * 100) / 100
+              : 0,
+          aiInterceptionRate:
+            stat.totalSessions > 0
+              ? Math.round(
+                  (stat.aiResolvedSessions / stat.totalSessions) * 10000,
+                ) / 100
+              : 0,
+          transferRate:
+            stat.totalSessions > 0
+              ? Math.round(
+                  (stat.transferredSessions / stat.totalSessions) * 10000,
+                ) / 100
               : 0,
         };
       });

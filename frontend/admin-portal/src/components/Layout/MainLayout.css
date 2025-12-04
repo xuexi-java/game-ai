@@ -5,6 +5,13 @@
 .layout-sider {
     background: #001529;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    height: 100vh;
+    overflow: auto;
+    z-index: 100;
 }
 
 .logo {
