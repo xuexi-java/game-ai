@@ -224,9 +224,15 @@ export class WebsocketGateway
 
       if (token) {
         try {
+          const jwtSecret = this.configService.get<string>('JWT_SECRET');
+          
+          // 强制检查：如果密钥不存在，抛出错误
+          if (!jwtSecret || jwtSecret.trim().length === 0) {
+            throw new Error('JWT_SECRET 未配置');
+          }
+
           const payload = this.jwtService.verify(token, {
-            secret:
-              this.configService.get<string>('JWT_SECRET') || 'your-secret-key',
+            secret: jwtSecret,
           });
 
           const user = await this.prisma.user.findUnique({

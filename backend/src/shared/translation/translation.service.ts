@@ -1,4 +1,3 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import { DetectResult, TranslateResult } from './translation.interface';
 import { BaiduTranslationProvider } from './providers/baidu.provider';
@@ -24,6 +23,10 @@ export class TranslationService {
             'id': 'id',        // 印尼语
             'ja': 'jp',        // 日语（百度使用 jp）  
             'ko': 'kor',       // 韩语（百度使用 kor）
+            'es': 'spa',       // 西班牙语（百度使用 spa）
+            'fr': 'fra',       // 法语（百度使用 fra）
+            'de': 'de',        // 德语
+            'ru': 'ru',        // 俄语
             'auto': 'auto',    // 自动检测
         };
 

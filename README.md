@@ -332,14 +332,14 @@ npm run start:dev
 cd frontend/player-app
 npm run dev
 ```
-玩家端运行在: http://localhost:20101
+玩家端运行在: http://localhost:5174（或 20101，取决于配置）
 
 **管理端**:
 ```bash
 cd frontend/admin-portal
 npm run dev
 ```
-管理端运行在: http://localhost:20102
+管理端运行在: http://localhost:5173（或 20102，取决于配置）
 
 **注意**: 本地开发模式需要：
 - 确保 Docker 服务（PostgreSQL）已启动：`docker-compose up -d postgres`
