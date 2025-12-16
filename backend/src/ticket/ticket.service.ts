@@ -15,11 +15,11 @@ import { SessionService } from '../session/session.service';
 import { QueueService } from '../queue/queue.service';
 import { IssueTypeService } from '../issue-type/issue-type.service';
 import * as crypto from 'crypto';
+import Redis from 'ioredis';
 
 @Injectable()
 export class TicketService {
   private readonly logger = new Logger(TicketService.name);
-  private readonly isProduction: boolean;
 
   constructor(
     private prisma: PrismaService,
@@ -32,18 +32,43 @@ export class TicketService {
     private sessionService: SessionService,
     private issueTypeService: IssueTypeService,
     private queueService: QueueService,
-  ) {
-    this.isProduction = process.env.NODE_ENV === 'production';
-  }
+    @Inject('REDIS_CLIENT')
+    private readonly redisClient: Redis,
+  ) { }
 
-  // 生成工单编号
-  private generateTicketNo(): string {
+  // 生成工单编号 - 使用 Redis 原子计数器，避免高并发冲突
+  private async generateTicketNo(): Promise<string> {
+    // 步骤 A: 获取当前日期字符串 (例如 20251215)
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, '0');
-    return `T-${dateStr}-${random}`;
+
+    try {
+      // 步骤 B: 定义 Redis Key (按天隔离，每天从 1 开始)
+      const key = `ticket:seq:${dateStr}`;
+
+      // 步骤 C: Redis 原子递增 (核心战术动作)
+      // 这一步是原子的，1000个线程同时调也绝不会重复
+      const seqId = await this.redisClient.incr(key);
+
+      // 步骤 D: 设置过期时间 (保留 25 小时，自动清理)
+      if (seqId === 1) {
+        await this.redisClient.expire(key, 60 * 60 * 25);
+      }
+
+      // 步骤 E: 补零格式化 (例如 35 -> 000035，支持百万级单量)
+      const seqStr = String(seqId).padStart(6, '0');
+
+      return `T-${dateStr}-${seqStr}`;
+    } catch (error) {
+      // Redis 连接失败时的降级方案：使用随机数（保留原逻辑作为备用）
+      this.logger.warn(
+        `Redis 不可用，使用降级方案生成工单号: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      const random = Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, '0');
+      return `T-${dateStr}-${random}`;
+    }
   }
 
   // 生成访问令牌
@@ -221,7 +246,7 @@ export class TicketService {
   // 创建工单
   async create(createTicketDto: CreateTicketDto): Promise<TicketResponseDto> {
     try {
-      const ticketNo = this.generateTicketNo();
+      const ticketNo = await this.generateTicketNo();
       const token = this.generateToken();
       const {
         occurredAt,
@@ -347,27 +372,14 @@ export class TicketService {
         });
       } catch (error) {
         console.error('创建工单失败:', error);
-        // 脱敏处理：生产环境不打印敏感信息
-        if (this.isProduction) {
-          console.error('工单数据:', {
-            gameId: createTicketDto.gameId,
-            playerIdOrName: '[REDACTED]',
-            description: `[REDACTED] length=${createTicketDto.description?.length || 0}`,
-            issueTypeIds,
-            serverId,
-            serverName,
-          });
-        } else {
-          // 开发/测试环境：保留部分信息用于调试（但仍脱敏 description）
-          console.error('工单数据:', {
-            gameId: createTicketDto.gameId,
-            playerIdOrName: createTicketDto.playerIdOrName,
-            description: `[REDACTED] length=${createTicketDto.description?.length || 0}`,
-            issueTypeIds,
-            serverId,
-            serverName,
-          });
-        }
+        console.error('工单数据:', {
+          gameId: createTicketDto.gameId,
+          playerIdOrName: createTicketDto.playerIdOrName,
+          description: createTicketDto.description?.substring(0, 50),
+          issueTypeIds,
+          serverId,
+          serverName,
+        });
         throw new Error(`创建工单失败: ${error.message || '未知错误'}`);
       }
 

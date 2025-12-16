@@ -12,12 +12,8 @@ export class BaiduTranslationProvider implements TranslationProvider {
     private readonly secret: string;
     // 百度翻译 API 地址（使用 HTTPS）
     private readonly apiUrl = 'https://fanyi-api.baidu.com/api/trans/vip/translate';
-    // 环境检查：是否为生产环境
-    private readonly isProduction: boolean;
 
     constructor(private readonly configService: ConfigService) {
-        // 初始化环境检查
-        this.isProduction = this.configService.get<string>('NODE_ENV') === 'production';
         // 获取并清理环境变量，去除可能的空白字符和隐藏字符
         const rawAppId = this.configService.get<string>('BAIDU_TRANSLATE_APP_ID') || '';
         const rawSecret = this.configService.get<string>('BAIDU_TRANSLATE_SECRET') || '';
@@ -91,60 +87,6 @@ export class BaiduTranslationProvider implements TranslationProvider {
         }
     }
 
-    /**
-     * 脱敏文本内容（保护用户隐私）
-     * 生产环境：返回 [REDACTED] length=XX
-     * 开发/测试环境：返回完整内容
-     */
-    private redactText(text: string): string {
-        if (this.isProduction) {
-            return `[REDACTED] length=${text.length}`;
-        }
-        return text;
-    }
-
-    /**
-     * 脱敏 Secret 密钥（保护安全）
-     * 任何环境下都只显示前3位和后3位，中间用...代替
-     */
-    private redactSecret(secret: string): string {
-        if (!secret || secret.length === 0) {
-            return '[REDACTED]';
-        }
-        if (secret.length >= 6) {
-            return `${secret.substring(0, 3)}...${secret.substring(secret.length - 3)}`;
-        }
-        // 如果长度小于6，只显示长度信息
-        return `[REDACTED] length=${secret.length}`;
-    }
-
-    /**
-     * 脱敏 API 响应数据（保护用户隐私）
-     * 脱敏 trans_result 中的 src 和 dst 字段
-     */
-    private sanitizeApiResponse(data: any): any {
-        if (!data || typeof data !== 'object') {
-            return data;
-        }
-
-        const sanitized = { ...data };
-
-        // 脱敏翻译结果中的文本内容
-        if (sanitized.trans_result && Array.isArray(sanitized.trans_result)) {
-            sanitized.trans_result = sanitized.trans_result.map((item: any) => ({
-                ...item,
-                src: this.isProduction 
-                    ? `[REDACTED] length=${item.src?.length || 0}` 
-                    : item.src, // 开发环境保留完整内容便于调试
-                dst: this.isProduction 
-                    ? `[REDACTED] length=${item.dst?.length || 0}` 
-                    : item.dst, // 开发环境保留完整内容便于调试
-            }));
-        }
-
-        return sanitized;
-    }
-
     private sign(q: string, salt: string): string {
         // 百度翻译 API 签名计算：appid + 原文（未编码）+ salt + 密钥
         // 注意：签名计算使用原始文本，不需要 URL 编码
@@ -164,14 +106,18 @@ export class BaiduTranslationProvider implements TranslationProvider {
         // 使用 UTF-8 编码确保中文字符正确处理
         const sign = crypto.createHash('md5').update(str, 'utf8').digest('hex');
 
-        // 详细的调试日志（环境感知，保护隐私）
+        // 详细的调试日志（始终输出，便于排查问题）
         this.logger.log(`[Sign Calculation]`);
         this.logger.log(`  appId: "${this.appId}" (length: ${this.appId.length})`);
-        this.logger.log(`  query: "${this.redactText(query)}" (length: ${query.length}, bytes: ${Buffer.from(query, 'utf8').length})`);
+        this.logger.log(`  query: "${query}" (length: ${query.length}, bytes: ${Buffer.from(query, 'utf8').length})`);
         this.logger.log(`  salt: "${salt}"`);
         this.logger.log(`  secret: "${'*'.repeat(this.secret.length)}" (length: ${this.secret.length})`);
-        // 显示签名字符串（脱敏处理，任何环境都脱敏用户输入）
-        this.logger.log(`  sign string: "${this.appId}[REDACTED]${salt}[REDACTED]" (length: ${str.length})`);
+        // 显示完整的签名字符串（对于短文本）或预览（对于长文本）
+        if (str.length <= 100) {
+            this.logger.log(`  sign string: "${this.appId}${query}${salt}${'*'.repeat(this.secret.length)}"`);
+        } else {
+            this.logger.log(`  sign string preview: "${this.appId}${query.substring(0, 20)}...${query.substring(query.length - 20)}${salt}${'*'.repeat(this.secret.length)}"`);
+        }
         this.logger.log(`  sign (MD5): "${sign}"`);
         this.logger.log(`  sign string length: ${str.length}, sign string bytes: ${Buffer.from(str, 'utf8').length}`);
 
@@ -215,7 +161,7 @@ export class BaiduTranslationProvider implements TranslationProvider {
             // 发送请求（axios 会自动对参数进行 URL 编码）
             // 注意：签名计算使用原始文本，但请求参数会被 axios 自动 URL 编码
             this.logger.log(`[Request Parameters]`);
-            this.logger.log(`  q: "${this.redactText(text)}"`);
+            this.logger.log(`  q: "${text}"`);
             this.logger.log(`  from: ${from}`);
             this.logger.log(`  to: ${to}`);
             this.logger.log(`  appid: ${this.appId}`);
@@ -236,9 +182,8 @@ export class BaiduTranslationProvider implements TranslationProvider {
 
             const data = response.data;
 
-            // 记录 API 响应（脱敏处理）
-            const sanitizedResponse = this.sanitizeApiResponse(data);
-            this.logger.log(`[API Response] ${JSON.stringify(sanitizedResponse).substring(0, 200)}`);
+            // 记录 API 响应
+            this.logger.log(`[API Response] ${JSON.stringify(data).substring(0, 200)}`);
 
             if (data.error_code) {
                 this.logger.error(`Baidu Translation Error: ${data.error_code} - ${data.error_msg}`);
@@ -258,10 +203,13 @@ export class BaiduTranslationProvider implements TranslationProvider {
                         this.logger.error(`  App ID: "${this.appId}" (length: ${this.appId.length})`);
                         this.logger.error(`  Secret length: ${this.secret.length} (expected: 20)`);
                         this.logger.error(`  Secret format valid: ${/^[a-zA-Z0-9]+$/.test(this.secret)}`);
-                        // 输出Secret的脱敏信息（任何环境下都脱敏）
-                        this.logger.error(`  Secret preview: "${this.redactSecret(this.secret)}"`);
-                        // 脱敏 Sign string 中的文本内容（任何环境都脱敏）
-                        this.logger.error(`  Sign string used: "${this.appId}[REDACTED]${salt}[REDACTED]"`);
+                        // 输出Secret的前3个和后3个字符用于验证（仅用于诊断）
+                        if (this.secret.length >= 6) {
+                            this.logger.error(`  Secret preview (for verification): "${this.secret.substring(0, 3)}...${this.secret.substring(this.secret.length - 3)}"`);
+                        } else {
+                            this.logger.error(`  Secret preview: "${this.secret}"`);
+                        }
+                        this.logger.error(`  Sign string used: "${this.appId}${text.substring(0, Math.min(20, text.length))}${text.length > 20 ? '...' : ''}${salt}${'*'.repeat(this.secret.length)}"`);
                         this.logger.error(`  💡 提示: 请使用 test-baidu-sign.js 脚本验证 Secret 是否正确`);
                         break;
                     case 54003:
@@ -296,23 +244,7 @@ export class BaiduTranslationProvider implements TranslationProvider {
             };
         } catch (error: any) {
             this.logger.error(`Baidu Translation Request Failed: ${error.message}`);
-            // 脱敏错误响应数据（可能包含用户输入）
-            const errorData = error.response?.data || error.message;
-            if (error.response?.data && typeof error.response.data === 'object') {
-                // 如果是对象，脱敏可能包含用户文本的字段
-                const sanitizedData = { ...error.response.data };
-                if (sanitizedData.trans_result && Array.isArray(sanitizedData.trans_result)) {
-                    // 脱敏翻译结果中的文本内容
-                    sanitizedData.trans_result = sanitizedData.trans_result.map((item: any) => ({
-                        ...item,
-                        src: this.isProduction ? `[REDACTED] length=${item.src?.length || 0}` : item.src,
-                        dst: this.isProduction ? `[REDACTED] length=${item.dst?.length || 0}` : item.dst,
-                    }));
-                }
-                this.logger.error(`Error details: ${JSON.stringify(sanitizedData)}`);
-            } else {
-                this.logger.error(`Error details: ${JSON.stringify(errorData)}`);
-            }
+            this.logger.error(`Error details: ${JSON.stringify(error.response?.data || error.message)}`);
 
             // 只有在明确是服务关闭的情况下才使用 Mock（避免在开发环境自动 fallback）
             if (error.message.includes('service close') || error.response?.data?.error_code === 58002) {

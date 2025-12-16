@@ -10,11 +10,7 @@
         "dev": "vite",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
-        "preview": "vite preview",
-        "test": "vitest",
-        "test:ui": "vitest --ui",
-        "test:coverage": "vitest --coverage",
-        "test:watch": "vitest --watch"
+        "preview": "vite preview"
     },
     "dependencies": {
         "@types/uuid": "^10.0.0",

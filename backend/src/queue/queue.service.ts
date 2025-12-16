@@ -261,6 +261,27 @@ export class QueueService {
         return;
       }
 
+      // 检查数据库表是否存在（通过尝试查询表结构）
+      try {
+        // 先尝试一个简单的查询来检查表是否存在
+        await this.prisma.$queryRaw`SELECT 1 FROM "Session" LIMIT 1`;
+      } catch (tableError: any) {
+        // 如果表不存在，优雅地跳过恢复
+        if (
+          tableError?.message?.includes('does not exist') ||
+          tableError?.code === '42P01' || // PostgreSQL 表不存在错误码
+          tableError?.message?.includes('Table') ||
+          tableError?.message?.includes('table')
+        ) {
+          this.logger.warn(
+            'Session 表不存在，可能是数据库迁移尚未执行，跳过队列数据恢复',
+          );
+          return;
+        }
+        // 其他错误继续抛出
+        throw tableError;
+      }
+
       // 清空现有队列（可选，根据需求决定）
       // await this.redis.del(this.UNASSIGNED_QUEUE_KEY);
       // const agentKeys = await this.redis.keys(`${this.AGENT_QUEUE_KEY_PREFIX}*`);
@@ -328,8 +349,23 @@ export class QueueService {
       this.logger.log(
         `队列数据恢复完成：未分配 ${unassignedSessions.length} 个，已分配 ${assignedSessions.length} 个`,
       );
-    } catch (error) {
-      this.logger.error(`从数据库恢复队列数据失败: ${error.message}`, error.stack);
+    } catch (error: any) {
+      // 检查是否是表不存在的错误
+      if (
+        error?.message?.includes('does not exist') ||
+        error?.code === '42P01' || // PostgreSQL 表不存在错误码
+        error?.message?.includes('Table') ||
+        error?.message?.includes('table')
+      ) {
+        this.logger.warn(
+          '数据库表不存在，可能是数据库迁移尚未执行，跳过队列数据恢复',
+        );
+        return;
+      }
+      this.logger.error(
+        `从数据库恢复队列数据失败: ${error?.message || String(error)}`,
+        error?.stack,
+      );
       // 不抛出错误，允许系统继续运行
     }
   }
@@ -341,6 +377,22 @@ export class QueueService {
     try {
       if (!(await this.isRedisAvailable())) {
         return;
+      }
+
+      // 检查数据库表是否存在
+      try {
+        await this.prisma.$queryRaw`SELECT 1 FROM "Session" LIMIT 1`;
+      } catch (tableError: any) {
+        if (
+          tableError?.message?.includes('does not exist') ||
+          tableError?.code === '42P01' ||
+          tableError?.message?.includes('Table') ||
+          tableError?.message?.includes('table')
+        ) {
+          // 表不存在，静默跳过
+          return;
+        }
+        throw tableError;
       }
 
       // 获取所有排队状态的会话
@@ -366,8 +418,21 @@ export class QueueService {
       }
 
       this.logger.debug(`同步队列数据到数据库完成，更新了 ${queuedSessions.length} 个会话`);
-    } catch (error) {
-      this.logger.error(`同步队列数据到数据库失败: ${error.message}`, error.stack);
+    } catch (error: any) {
+      // 检查是否是表不存在的错误
+      if (
+        error?.message?.includes('does not exist') ||
+        error?.code === '42P01' ||
+        error?.message?.includes('Table') ||
+        error?.message?.includes('table')
+      ) {
+        // 表不存在，静默跳过
+        return;
+      }
+      this.logger.error(
+        `同步队列数据到数据库失败: ${error?.message || String(error)}`,
+        error?.stack,
+      );
     }
   }
 

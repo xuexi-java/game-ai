@@ -5,6 +5,7 @@ import {
   IsString,
   IsOptional,
   IsNumber,
+  IsBoolean,
   validateSync,
 } from 'class-validator';
 
@@ -45,6 +46,43 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   MAX_FILE_SIZE?: number;
+
+  // ==================== 数据库连接池配置 ====================
+  @IsOptional()
+  @IsString()
+  DATABASE_URL_BASE?: string;
+
+  @IsOptional()
+  @IsNumber()
+  DB_CONNECTION_LIMIT?: number;
+
+  @IsOptional()
+  @IsNumber()
+  DB_POOL_TIMEOUT?: number;
+
+  @IsOptional()
+  @IsNumber()
+  DB_CONNECT_TIMEOUT?: number;
+
+  @IsOptional()
+  @IsNumber()
+  DB_QUERY_TIMEOUT?: number;
+
+  @IsOptional()
+  @IsNumber()
+  DB_STATEMENT_TIMEOUT?: number;
+
+  @IsOptional()
+  @IsNumber()
+  DB_IDLE_TIMEOUT?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  DB_POOL_MONITORING?: boolean;
+
+  @IsOptional()
+  @IsString()
+  DB_POOL_LOG_LEVEL?: string;
 }
 
 // 验证环境变量
