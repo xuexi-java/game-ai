@@ -178,9 +178,10 @@ export class MessageService {
     requestedTarget = requestedTarget || 'zh';
 
     // ✅ 添加验证：确保目标语言是有效的语言代码，而不是消息内容
-    const validLanguageCodes = ['zh', 'en', 'th', 'jp', 'kor', 'vie', 'id', 'auto'];
+    // 支持的语言：中文、英语、日语、韩语、西班牙语、法语、德语、俄语
+    const validLanguageCodes = ['zh', 'en', 'ja', 'jp', 'ko', 'kor', 'es', 'spa', 'fr', 'fra', 'de', 'ru', 'auto'];
     const isValidLangCode = requestedTarget && 
-      (requestedTarget.length <= 3) && 
+      (requestedTarget.length <= 4) && // 支持3-4位语言代码（如 kor, fra, spa） 
       (validLanguageCodes.includes(requestedTarget.toLowerCase()) || /^[a-z]{2,3}$/i.test(requestedTarget));
 
     if (!isValidLangCode) {
@@ -232,16 +233,14 @@ export class MessageService {
         data: { metadata: updatedMeta as any },
       });
     } catch (error) {
-      // 记录详细错误日志（LoggerService 会自动过滤敏感信息）
+      // 记录详细错误日志
       this.logger.error('Translation failed', error);
-      // 只记录错误消息，不记录整个错误对象（避免泄露用户输入）
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error details: ${errorMessage}`);
+      this.logger.error(`Error details: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
       this.logger.error(`Stack trace: ${error instanceof Error ? error.stack : 'N/A'}`);
 
       // 返回更详细的错误信息
-      const finalErrorMessage = error instanceof Error ? error.message : '翻译失败，请稍后重试';
-      throw new BadRequestException(`翻译失败: ${finalErrorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : '翻译失败，请稍后重试';
+      throw new BadRequestException(`翻译失败: ${errorMessage}`);
     }
   }
 
@@ -264,11 +263,13 @@ export class MessageService {
       const result = await this.translationService.detect(content);
 
       // ✅ 验证检测结果：确保是有效的语言代码
-      const validLanguageCodes = ['zh', 'en', 'th', 'jp', 'kor', 'vie', 'id'];
+      // 支持的语言：中文、英语、日语、韩语、西班牙语、法语、德语、俄语
+      const validLanguageCodes = ['zh', 'en', 'ja', 'jp', 'ko', 'kor', 'es', 'spa', 'fr', 'fra', 'de', 'ru'];
       let detectedLang = result.language;
 
       // 如果检测结果不是有效的语言代码，使用默认值
-      if (!detectedLang || detectedLang.length > 3 || !validLanguageCodes.includes(detectedLang.toLowerCase())) {
+      // 支持3-4位的语言代码（如 kor, fra, spa）
+      if (!detectedLang || detectedLang.length > 4 || !validLanguageCodes.includes(detectedLang.toLowerCase())) {
         this.logger.warn(`[Language Detection] Invalid detected language: "${detectedLang}", using "zh"`);
         detectedLang = 'zh';
       } else {

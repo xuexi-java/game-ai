@@ -15,11 +15,11 @@ import { SessionService } from '../session/session.service';
 import { QueueService } from '../queue/queue.service';
 import { IssueTypeService } from '../issue-type/issue-type.service';
 import * as crypto from 'crypto';
+import Redis from 'ioredis';
 
 @Injectable()
 export class TicketService {
   private readonly logger = new Logger(TicketService.name);
-  private readonly isProduction: boolean;
 
   constructor(
     private prisma: PrismaService,
@@ -32,18 +32,43 @@ export class TicketService {
     private sessionService: SessionService,
     private issueTypeService: IssueTypeService,
     private queueService: QueueService,
-  ) {
-    this.isProduction = process.env.NODE_ENV === 'production';
-  }
+    @Inject('REDIS_CLIENT')
+    private readonly redisClient: Redis,
+  ) { }
 
-  // 生成工单编号
-  private generateTicketNo(): string {
+  // 生成工单编号 - 使用 Redis 原子计数器，避免高并发冲突
+  private async generateTicketNo(): Promise<string> {
+    // 步骤 A: 获取当前日期字符串 (例如 20251215)
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, '0');
-    return `T-${dateStr}-${random}`;
+
+    try {
+      // 步骤 B: 定义 Redis Key (按天隔离，每天从 1 开始)
+      const key = `ticket:seq:${dateStr}`;
+
+      // 步骤 C: Redis 原子递增 (核心战术动作)
+      // 这一步是原子的，1000个线程同时调也绝不会重复
+      const seqId = await this.redisClient.incr(key);
+
+      // 步骤 D: 设置过期时间 (保留 25 小时，自动清理)
+      if (seqId === 1) {
+        await this.redisClient.expire(key, 60 * 60 * 25);
+      }
+
+      // 步骤 E: 补零格式化 (例如 35 -> 000035，支持百万级单量)
+      const seqStr = String(seqId).padStart(6, '0');
+
+      return `T-${dateStr}-${seqStr}`;
+    } catch (error) {
+      // Redis 连接失败时的降级方案：使用随机数（保留原逻辑作为备用）
+      this.logger.warn(
+        `Redis 不可用，使用降级方案生成工单号: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      const random = Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, '0');
+      return `T-${dateStr}-${random}`;
+    }
   }
 
   // 生成访问令牌
@@ -221,7 +246,7 @@ export class TicketService {
   // 创建工单
   async create(createTicketDto: CreateTicketDto): Promise<TicketResponseDto> {
     try {
-      const ticketNo = this.generateTicketNo();
+      const ticketNo = await this.generateTicketNo();
       const token = this.generateToken();
       const {
         occurredAt,
@@ -294,14 +319,14 @@ export class TicketService {
           });
 
           if (!serverExists) {
-            console.warn(
+            this.logger.warn(
               `服务器(${serverId})不存在，将以 serverName 形式保存玩家输入`,
             );
             serverName = serverName ?? serverId;
             serverId = null;
           }
         } catch (error) {
-          console.error('检查服务器失败:', error);
+          this.logger.error('检查服务器失败:', error);
           // 继续执行，使用 serverName
           serverName = serverName ?? rawServerId ?? null;
           serverId = null;
@@ -346,28 +371,15 @@ export class TicketService {
           },
         });
       } catch (error) {
-        console.error('创建工单失败:', error);
-        // 脱敏处理：生产环境不打印敏感信息
-        if (this.isProduction) {
-          console.error('工单数据:', {
-            gameId: createTicketDto.gameId,
-            playerIdOrName: '[REDACTED]',
-            description: `[REDACTED] length=${createTicketDto.description?.length || 0}`,
-            issueTypeIds,
-            serverId,
-            serverName,
-          });
-        } else {
-          // 开发/测试环境：保留部分信息用于调试（但仍脱敏 description）
-          console.error('工单数据:', {
-            gameId: createTicketDto.gameId,
-            playerIdOrName: createTicketDto.playerIdOrName,
-            description: `[REDACTED] length=${createTicketDto.description?.length || 0}`,
-            issueTypeIds,
-            serverId,
-            serverName,
-          });
-        }
+        this.logger.error('创建工单失败:', error);
+        this.logger.error('工单数据:', {
+          gameId: createTicketDto.gameId,
+          playerIdOrName: createTicketDto.playerIdOrName,
+          description: createTicketDto.description?.substring(0, 50),
+          issueTypeIds,
+          serverId,
+          serverName,
+        });
         throw new Error(`创建工单失败: ${error.message || '未知错误'}`);
       }
 
@@ -386,7 +398,7 @@ export class TicketService {
         });
       } catch (error) {
         // ✅ 如果计算优先级失败，使用默认值，不影响工单创建
-        console.error('计算优先级失败，使用默认值:', error);
+        this.logger.error('计算优先级失败，使用默认值:', error);
         await this.prisma.ticket.update({
           where: { id: ticket.id },
           data: {
@@ -430,7 +442,7 @@ export class TicketService {
             }
           } catch (error) {
             // ✅ 如果自动分配失败，记录错误但不影响工单创建
-            console.error('自动分配直接转人工工单失败:', error);
+            this.logger.error('自动分配直接转人工工单失败:', error);
             sessionCreated = false;
           }
         }
@@ -443,7 +455,7 @@ export class TicketService {
           createTicketDto.playerIdOrName,
           createTicketDto.paymentOrderNo,
         ).catch((error) => {
-          console.error('身份验证失败:', error);
+          this.logger.error('身份验证失败:', error);
         });
       }
 
@@ -457,8 +469,8 @@ export class TicketService {
       };
     } catch (error) {
       // ✅ 捕获所有未处理的错误
-      console.error('创建工单过程中发生错误:', error);
-      console.error('错误堆栈:', error.stack);
+      this.logger.error('创建工单过程中发生错误:', error);
+      this.logger.error('错误堆栈:', error.stack);
       throw error; // 重新抛出，让 NestJS 的异常过滤器处理
     }
   }
@@ -712,7 +724,7 @@ export class TicketService {
         this.websocketGateway.notifyMessage(session.id, sessionMessage);
       } catch (sessionError) {
         // 会话消息创建失败不影响工单消息
-        console.warn(`创建会话消息失败: ${sessionError.message}`);
+        this.logger.warn(`创建会话消息失败: ${sessionError.message}`);
       }
     }
 
@@ -930,7 +942,7 @@ export class TicketService {
           });
         } catch (error) {
           // WebSocket 通知失败不影响状态更新
-          console.warn('WebSocket 通知失败:', error);
+          this.logger.warn('WebSocket 通知失败:', error);
         }
       };
 
@@ -971,7 +983,7 @@ export class TicketService {
             status: 'WAITING',
           });
         } catch (error) {
-          console.warn('WebSocket 通知失败:', error);
+          this.logger.warn('WebSocket 通知失败:', error);
         }
       }
     }
@@ -1110,11 +1122,11 @@ export class TicketService {
         });
       } catch (error) {
         // WebSocket 通知失败不影响状态更新
-        console.warn('WebSocket 通知失败:', error);
+        this.logger.warn('WebSocket 通知失败:', error);
       }
     }
 
-    console.log(
+    this.logger.log(
       `定时任务：已更新 ${ticketsToUpdate.length} 个超过3天未处理的工单状态为 RESOLVED`,
     );
   }
@@ -1283,7 +1295,7 @@ export class TicketService {
               session.queuedAt,
             );
             if (!added) {
-              console.warn(
+              this.logger.warn(
                 `添加到 Redis 队列失败，将在下次一致性检查时修复`,
               );
             }
@@ -1497,7 +1509,7 @@ export class TicketService {
           session.queuedAt,
         );
         if (!added) {
-          console.warn(
+          this.logger.warn(
             `添加到 Redis 队列失败，将在下次一致性检查时修复`,
           );
         }
@@ -1507,7 +1519,7 @@ export class TicketService {
       try {
         await this.sessionService.reorderQueue();
       } catch (error) {
-        console.warn(`重新排序队列失败: ${error.message}`);
+        this.logger.warn(`重新排序队列失败: ${error.message}`);
       }
 
       // ✅ 自动分配客服（只分配，不改变状态，保持 QUEUED）
@@ -1611,7 +1623,7 @@ export class TicketService {
           );
         }
       } catch (error) {
-        console.warn(`通知新会话失败: ${error.message}`);
+        this.logger.warn(`通知新会话失败: ${error.message}`);
       }
 
       return { hasAgents: true, sessionCreated: true };

@@ -184,7 +184,11 @@ async function main() {
         const game = await prisma.game.upsert({
           where: { name: gameData.name },
           update: {
-            // 如果游戏已存在，不更新 API Key（避免覆盖已配置的密钥）
+            // 如果游戏已存在，更新 API Key 和 BaseUrl（仅在 seed 中提供了有效值时）
+            // 如果 API Key 是占位符，则不更新（保持现有配置）
+            ...(gameData.difyApiKey && gameData.difyApiKey !== 'your-dify-api-key-here' 
+              ? { difyApiKey: gameData.difyApiKey } 
+              : {}),
             difyBaseUrl: gameData.difyBaseUrl,
           },
           create: {

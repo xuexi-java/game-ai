@@ -47,6 +47,15 @@ services:
       - NODE_ENV=production
       - PORT=21101
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/game_ai_cs?schema=public
+      # 数据库连接池配置
+      - DB_CONNECTION_LIMIT=${DB_CONNECTION_LIMIT:-50}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-20}
+      - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-10}
+      - DB_QUERY_TIMEOUT=${DB_QUERY_TIMEOUT:-30}
+      - DB_STATEMENT_TIMEOUT=${DB_STATEMENT_TIMEOUT:-30000}
+      - DB_IDLE_TIMEOUT=${DB_IDLE_TIMEOUT:-600}
+      - DB_POOL_MONITORING=${DB_POOL_MONITORING:-true}
+      - DB_POOL_LOG_LEVEL=${DB_POOL_LOG_LEVEL:-warn}
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
       - FRONTEND_URL=http://localhost:20101,http://localhost:20102
